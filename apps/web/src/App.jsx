@@ -36,10 +36,6 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
 const UCSB_TEAM_ID = "2540";
 const PBP_TEAM_ID = "pbp";
-const PBP_GAME_OPTIONS = [
-  { value: "401809115", label: "401809115" },
-  { value: "401826049", label: "401826049" }
-];
 const HIDDEN_COLUMNS = new Set(["row_key"]);
 
 const DEFAULT_TABLE_STATE = {
@@ -50,6 +46,10 @@ const DEFAULT_TABLE_STATE = {
   forcedRowKey: "",
   highlightRowKey: ""
 };
+
+const LOCKED_SEASON_ID = "2025-2026";
+const LOCKED_SEASON_TYPE_LABEL = "Regular Season";
+const LOCKED_SEASON_TYPE_SLUG = "regular";
 
 function normalizeTeamIdInput(value) {
   return String(value || "")
@@ -65,6 +65,42 @@ function comparableValue(value) {
     return { type: "number", value: numeric };
   }
   return { type: "string", value: normalized.toLowerCase() };
+}
+
+function groupTeamsByConference(teams, query) {
+  const grouped = new Map();
+  const filter = String(query || "").trim().toLowerCase();
+  for (const team of teams) {
+    const label = `${team.school_name || ""} ${team.display_name || ""} ${team.abbreviation || ""} ${team.conference_name || ""}`.toLowerCase();
+    if (filter && !label.includes(filter)) {
+      continue;
+    }
+    const conference = team.conference_name || "Other";
+    if (!grouped.has(conference)) {
+      grouped.set(conference, []);
+    }
+    grouped.get(conference).push(team);
+  }
+  return Array.from(grouped.entries()).map(([conference, items]) => [
+    conference,
+    items.sort((left, right) =>
+      String(left.school_name || left.display_name || left.team_id).localeCompare(
+        String(right.school_name || right.display_name || right.team_id)
+      )
+    )
+  ]);
+}
+
+function groupGamesByMonth(games) {
+  const grouped = new Map();
+  for (const game of games) {
+    const key = String(game.date || "").slice(0, 7) || "Unknown";
+    if (!grouped.has(key)) {
+      grouped.set(key, []);
+    }
+    grouped.get(key).push(game);
+  }
+  return Array.from(grouped.entries());
 }
 
 async function fetchJson(url, options = {}, retries = 0) {
@@ -256,10 +292,16 @@ export default function App() {
   const savedPanelRef = useRef();
   const insightsColumnRef = useRef();
 
-  const [opponentTeamId, setOpponentTeamId] = useState("ucr");
+  const [opponentTeamId, setOpponentTeamId] = useState("27");
   const [espnTeams, setEspnTeams] = useState([]);
   const [teamsLoading, setTeamsLoading] = useState(false);
   const [teamsError, setTeamsError] = useState("");
+  const [teamSearch, setTeamSearch] = useState("");
+  const [buildJob, setBuildJob] = useState(null);
+  const [buildError, setBuildError] = useState("");
+  const [scheduleGames, setScheduleGames] = useState([]);
+  const [gamesLoading, setGamesLoading] = useState(false);
+  const [gamesError, setGamesError] = useState("");
   const [seasonPlayers, setSeasonPlayers] = useState({
     ucsb: { columns: [], rows: [] },
     opponent: { columns: [], rows: [] }
@@ -309,6 +351,15 @@ export default function App() {
   const [insightError, setInsightError] = useState("");
 
   const normalizedOpponentTeamId = useMemo(() => normalizeTeamIdInput(opponentTeamId), [opponentTeamId]);
+  const groupedOpponents = useMemo(
+    () =>
+      groupTeamsByConference(
+        espnTeams.filter((team) => normalizeTeamIdInput(team.team_id) !== UCSB_TEAM_ID),
+        teamSearch
+      ),
+    [espnTeams, teamSearch]
+  );
+  const groupedScheduleGames = useMemo(() => groupGamesByMonth(scheduleGames), [scheduleGames]);
   const teamNameById = useMemo(() => {
     const map = {};
     for (const team of espnTeams) {
@@ -329,16 +380,55 @@ export default function App() {
       const payload = await fetchJson(`${API_BASE}/api/espn/teams`, {}, 1);
       const teams = Array.isArray(payload.teams) ? payload.teams : [];
       setEspnTeams(teams);
+      if (!normalizedOpponentTeamId) {
+        const preferred =
+          teams.find((team) => normalizeTeamIdInput(team.abbreviation) === "ucr") ||
+          teams.find((team) => normalizeTeamIdInput(team.team_id) !== UCSB_TEAM_ID);
+        if (preferred) {
+          setOpponentTeamId(preferred.team_id);
+        }
+      }
     } catch (error) {
       setTeamsError(error.message);
     } finally {
       setTeamsLoading(false);
     }
-  }, []);
+  }, [normalizedOpponentTeamId]);
 
   useEffect(() => {
     loadEspnTeams();
   }, [loadEspnTeams]);
+
+  const loadScheduleGames = useCallback(async (teamId) => {
+    const normalizedTeamId = normalizeTeamIdInput(teamId) || UCSB_TEAM_ID;
+    setGamesLoading(true);
+    setGamesError("");
+    try {
+      const payload = await fetchJson(
+        `${API_BASE}/api/season/${encodeURIComponent(LOCKED_SEASON_ID)}/team/${encodeURIComponent(normalizedTeamId)}/games`,
+        {},
+        1
+      );
+      const games = Array.isArray(payload.games) ? payload.games : [];
+      setScheduleGames(games);
+      if (games.length > 0) {
+        setPbpGameId((current) => {
+          const exists = games.some((game) => game.game_id === current);
+          return exists ? current : games[0].game_id;
+        });
+      }
+    } catch (error) {
+      setGamesError(error.message);
+      setScheduleGames([]);
+    } finally {
+      setGamesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const targetTeamId = normalizedOpponentTeamId || UCSB_TEAM_ID;
+    loadScheduleGames(targetTeamId);
+  }, [loadScheduleGames, normalizedOpponentTeamId]);
 
   const loadSeasonPlayers = useCallback(async (side, teamId) => {
     const normalizedTeamId = normalizeTeamIdInput(teamId);
@@ -470,6 +560,56 @@ export default function App() {
       setPbpUpdating(false);
     }
   }, [loadPbp, pbpGameId]);
+
+  const startBuild = useCallback(
+    async (mode) => {
+      setBuildError("");
+      try {
+        const url =
+          mode === "schedule"
+            ? `${API_BASE}/api/build/ucsb/${LOCKED_SEASON_ID}/${LOCKED_SEASON_TYPE_SLUG}/schedule`
+            : `${API_BASE}/api/build/ucsb/${LOCKED_SEASON_ID}/${LOCKED_SEASON_TYPE_SLUG}/season?team_id=${encodeURIComponent(
+                normalizedOpponentTeamId || UCSB_TEAM_ID
+              )}`;
+        const payload = await fetchJson(
+          url,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" }
+          },
+          1
+        );
+        setBuildJob(payload.job || null);
+      } catch (error) {
+        setBuildError(error.message);
+      }
+    },
+    [normalizedOpponentTeamId]
+  );
+
+  useEffect(() => {
+    if (!buildJob?.job_id || !["queued", "running"].includes(buildJob.status)) {
+      return;
+    }
+    const handle = window.setInterval(async () => {
+      try {
+        const payload = await fetchJson(`${API_BASE}/api/build/jobs/${encodeURIComponent(buildJob.job_id)}`, {}, 1);
+        setBuildJob(payload);
+        if (payload.status === "succeeded") {
+          loadSeasonPlayers("ucsb", UCSB_TEAM_ID);
+          if (normalizedOpponentTeamId) {
+            loadSeasonPlayers("opponent", normalizedOpponentTeamId);
+            loadScheduleGames(normalizedOpponentTeamId);
+          }
+          loadPbp(pbpGameId);
+          loadLiveStats();
+        }
+      } catch (error) {
+        setBuildError(error.message);
+      }
+    }, 1500);
+    return () => window.clearInterval(handle);
+  }, [buildJob, loadLiveStats, loadPbp, loadScheduleGames, loadSeasonPlayers, normalizedOpponentTeamId, pbpGameId]);
 
   const resolveTeamName = useCallback(
     (teamId) => {
@@ -626,6 +766,17 @@ export default function App() {
     }
     return Array.from(opts).sort((a, b) => a.localeCompare(b));
   }, [pbpAdvancedFiltersDraft.types, pbpData.rows]);
+  const activeLiveTeamRows = liveStats[`${activeLivePrefix}_team`]?.rows || [];
+  const liveTeamSummary = useMemo(() => {
+    if (!activeLiveTeamRows.length) {
+      return "";
+    }
+    const stats = {};
+    for (const row of activeLiveTeamRows) {
+      stats[row.stat_key] = row.display_value || row.value;
+    }
+    return `PTS ${stats.pts || "0"} | REB ${stats.reb || "0"} | AST ${stats.ast || "0"} | FG% ${stats.fg_pct || "0"} | 3P% ${stats["3p_pct"] || "0"} | FT% ${stats.ft_pct || "0"}`;
+  }, [activeLiveTeamRows]);
   const pbpPeriodOptions = useMemo(() => {
     const opts = new Set();
     for (const row of pbpData.rows) {
@@ -872,34 +1023,58 @@ export default function App() {
                 </div>
                 <div className="team-line opponent-line">
                   {espnTeams.length > 0 ? (
-                    <select value={normalizedOpponentTeamId} onChange={(event) => setOpponentTeamId(event.target.value)}>
-                      <option value="">Select ESPN team</option>
-                      {espnTeams
-                        .filter((team) => normalizeTeamIdInput(team.team_id) !== UCSB_TEAM_ID)
-                        .map((team) => (
-                          <option key={team.team_id} value={team.team_id}>
-                            {team.school_name} ({team.team_id})
-                          </option>
+                    <>
+                      <input
+                        type="text"
+                        value={teamSearch}
+                        placeholder="Search opponent"
+                        onChange={(event) => setTeamSearch(event.target.value)}
+                      />
+                      <select value={normalizedOpponentTeamId} onChange={(event) => setOpponentTeamId(event.target.value)}>
+                        <option value="">Select schedule opponent</option>
+                        {groupedOpponents.map(([conferenceName, teams]) => (
+                          <optgroup key={conferenceName} label={conferenceName}>
+                            {teams.map((team) => (
+                              <option key={team.team_id} value={team.team_id}>
+                                {team.school_name || team.display_name} ({team.abbreviation || team.team_id})
+                              </option>
+                            ))}
+                          </optgroup>
                         ))}
-                    </select>
+                      </select>
+                    </>
                   ) : (
-                    <input
-                      type="text"
-                      value={opponentTeamId}
-                      placeholder="Team ID (e.g., ucr)"
-                      onChange={(event) => setOpponentTeamId(event.target.value)}
-                    />
+                    <span>Opponent list unavailable until supported teams load.</span>
                   )}
                 </div>
               </div>
             </div>
 
             <div className="table-status">
+              <span> Season: {LOCKED_SEASON_ID} {LOCKED_SEASON_TYPE_LABEL} only.</span>
+              <span> Scope: UCSB plus opponents on UCSB&apos;s schedule only.</span>
               {activeSeasonPlayersLoading ? <span> Loading season players...</span> : null}
               {activeSeasonPlayersError ? <span className="error"> {activeSeasonPlayersError}</span> : null}
               {teamsLoading ? <span> Loading ESPN teams...</span> : null}
               {teamsError ? <span className="error"> {teamsError}</span> : null}
+              {buildError ? <span className="error"> {buildError}</span> : null}
+              {buildJob ? (
+                <span>
+                  {" "}
+                  Build: {buildJob.stage} {buildJob.current_game_index || 0}/{buildJob.total_games || 0} ({buildJob.status})
+                </span>
+              ) : null}
               {activeSeasonSide === "opponent" && !normalizedOpponentTeamId ? <span> Select an opponent team to view opponent data.</span> : null}
+            </div>
+            <div className="table-status">
+              <button type="button" onClick={() => startBuild("schedule")} disabled={Boolean(buildJob && buildJob.status === "running")}>
+                Refresh Schedule
+              </button>
+              <button type="button" onClick={() => startBuild("season")} disabled={Boolean(buildJob && buildJob.status === "running")}>
+                Build Season Data
+              </button>
+              {buildJob?.message ? <span>{buildJob.message}</span> : null}
+              {buildJob?.error_message ? <span className="error">{buildJob.error_message}</span> : null}
             </div>
             <DataTable
               columns={activeSeasonPlayers.columns}
@@ -958,16 +1133,20 @@ export default function App() {
               </div>
               <div className="panel-header-actions">
                 <label>
-                  <span className="label-inline">Game ID:</span>
+                  <span className="label-inline">Game:</span>
                   <select
                     value={pbpGameId}
                     onChange={(e) => setPbpGameId(e.target.value)}
                     disabled={pbpUpdating}
                   >
-                    {PBP_GAME_OPTIONS.map((opt) => (
-                      <option key={opt.value} value={opt.value}>
-                        {opt.label}
-                      </option>
+                    {groupedScheduleGames.map(([month, games]) => (
+                      <optgroup key={month} label={month}>
+                        {games.map((game) => (
+                          <option key={game.game_id} value={game.game_id}>
+                            {game.label || `${game.date} ${game.opponent_name}`}
+                          </option>
+                        ))}
+                      </optgroup>
                     ))}
                   </select>
                 </label>
@@ -1007,6 +1186,7 @@ export default function App() {
                 <div className="table-status">
                   {liveStatsLoading ? <span> Loading live stats...</span> : null}
                   {liveStatsError ? <span className="error"> {liveStatsError}</span> : null}
+                  {liveTeamSummary ? <span> {liveTeamSummary}</span> : null}
                   {!pbpData.rows.length ? (
                     <span> Live stats are derived from play-by-play data. Click Update above to fetch PBP first.</span>
                   ) : (
@@ -1038,6 +1218,8 @@ export default function App() {
                 <div className="table-status">
                   {pbpLoading ? <span> Loading PBP...</span> : null}
                   {pbpError ? <span className="error"> {pbpError}</span> : null}
+                  {gamesLoading ? <span> Loading schedule games...</span> : null}
+                  {gamesError ? <span className="error"> {gamesError}</span> : null}
                   {!pbpLoading && !pbpError && pbpData.rows.length ? <span> Rows: {pbpData.rows.length}</span> : null}
                   {!pbpLoading && !pbpError && pbpData.source_url ? (
                     <span>
