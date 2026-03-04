@@ -15,7 +15,13 @@ from urllib.parse import parse_qs, urlparse
 
 import requests
 
-from .local_first import ROOT_TEAM_ID, get_service
+from .local_first import (
+    PLAYER_TABLE_COLUMNS,
+    ROOT_TEAM_ID,
+    field_goal_breakdown_metrics,
+    get_service,
+    player_display_row,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_ROOT = REPO_ROOT / "var" / "legacy_runtime"
@@ -1327,8 +1333,7 @@ LIVE_TEAM_COLUMNS = [
     "numeric_value", "display_value", "rank", "abbreviation",
 ]
 LIVE_PLAYER_COLUMNS = [
-    "row_key", "team_id", "Player", "GP", "MIN", "PTS", "REB", "AST",
-    "STL", "BLK", "TO", "FG_PCT", "FG3_PCT", "FT_PCT", "PF",
+    "team_id", *PLAYER_TABLE_COLUMNS,
 ]
 
 
@@ -1417,6 +1422,14 @@ def _compute_live_player_stats(team_plays: List[Dict[str, Any]]) -> Dict[str, Di
                 "3pa": 0,
                 "ftm": 0,
                 "fta": 0,
+                "midr_m": 0,
+                "midr_a": 0,
+                "layup_m": 0,
+                "layup_a": 0,
+                "dunk_m": 0,
+                "dunk_a": 0,
+                "dunks": 0,
+                "tips": 0,
             }
         return stats_by_athlete[aid]
 
@@ -1448,6 +1461,22 @@ def _compute_live_player_stats(team_plays: List[Dict[str, Any]]) -> Dict[str, Di
                     athlete_stats["2pm"] += 1
                 else:
                     athlete_stats["3pm"] += 1
+
+            if play_type == "JumpShot" and points_attempted == 2:
+                athlete_stats["midr_a"] += 1
+                if scoring_play:
+                    athlete_stats["midr_m"] += 1
+            elif play_type == "LayUpShot" and points_attempted == 2:
+                athlete_stats["layup_a"] += 1
+                if scoring_play:
+                    athlete_stats["layup_m"] += 1
+            elif play_type == "DunkShot":
+                athlete_stats["dunk_a"] += 1
+                if scoring_play:
+                    athlete_stats["dunk_m"] += 1
+                athlete_stats["dunks"] += 1
+            elif play_type == "TipShot":
+                athlete_stats["tips"] += 1
 
             if _is_free_throw_text(text):
                 athlete_stats["fta"] += 1
@@ -1486,6 +1515,14 @@ def _compute_live_team_stats(team_plays: List[Dict[str, Any]]) -> Dict[str, int]
         "3pa": 0,
         "ftm": 0,
         "fta": 0,
+        "midr_m": 0,
+        "midr_a": 0,
+        "layup_m": 0,
+        "layup_a": 0,
+        "dunk_m": 0,
+        "dunk_a": 0,
+        "dunks": 0,
+        "tips": 0,
         "oreb": 0,
         "dreb": 0,
         "ast": 0,
@@ -1519,6 +1556,22 @@ def _compute_live_team_stats(team_plays: List[Dict[str, Any]]) -> Dict[str, int]
                 totals["2pm"] += 1
             else:
                 totals["3pm"] += 1
+
+        if play_type == "JumpShot" and points_attempted == 2:
+            totals["midr_a"] += 1
+            if scoring_play:
+                totals["midr_m"] += 1
+        elif play_type == "LayUpShot" and points_attempted == 2:
+            totals["layup_a"] += 1
+            if scoring_play:
+                totals["layup_m"] += 1
+        elif play_type == "DunkShot":
+            totals["dunk_a"] += 1
+            if scoring_play:
+                totals["dunk_m"] += 1
+            totals["dunks"] += 1
+        elif play_type == "TipShot":
+            totals["tips"] += 1
 
         if _is_free_throw_text(text):
             totals["fta"] += 1
@@ -1580,9 +1633,25 @@ def _live_team_rows(team_id: str, rows: List[Dict[str, Any]]) -> List[Dict[str, 
     add_stat("3pm", "3PM", totals["3pm"], str(totals["3pm"]))
     add_stat("3pa", "3PA", totals["3pa"], str(totals["3pa"]))
     add_stat("3p_pct", "3P%", fg3_pct, fg3_pct)
+    add_stat("dunks", "DUNKS", totals["dunks"], str(totals["dunks"]))
+    add_stat("tips", "TIPS", totals["tips"], str(totals["tips"]))
     add_stat("ftm", "FTM", totals["ftm"], str(totals["ftm"]))
     add_stat("fta", "FTA", totals["fta"], str(totals["fta"]))
     add_stat("ft_pct", "FT%", ft_pct, ft_pct)
+    for stat_key, stat_name, display_value in field_goal_breakdown_metrics(
+        fgm=totals["fgm"],
+        fga=totals["fga"],
+        fg3m=totals["3pm"],
+        fg3a=totals["3pa"],
+        mid_m=totals["midr_m"],
+        mid_a=totals["midr_a"],
+        layup_m=totals["layup_m"],
+        layup_a=totals["layup_a"],
+        dunk_m=totals["dunk_m"],
+        dunk_a=totals["dunk_a"],
+        tips=totals["tips"],
+    ):
+        add_stat(stat_key, stat_name, display_value, display_value)
     add_stat("oreb", "Offensive Rebounds", totals["oreb"], str(totals["oreb"]))
     add_stat("dreb", "Defensive Rebounds", totals["dreb"], str(totals["dreb"]))
     add_stat("reb", "Rebounds", reb, str(reb))
@@ -1609,6 +1678,27 @@ def _live_player_rows(team_id: str, rows: List[Dict[str, Any]]) -> List[Dict[str
             all_athletes.add(assist_id)
     seen: Dict[str, int] = {}
     out: List[Dict[str, Any]] = []
+    totals = {
+        "pts": 0,
+        "reb": 0,
+        "ast": 0,
+        "to": 0,
+        "stl": 0,
+        "blk": 0,
+        "pf": 0,
+        "fgm": 0,
+        "fga": 0,
+        "fg3m": 0,
+        "fg3a": 0,
+        "ftm": 0,
+        "fta": 0,
+        "midr_m": 0,
+        "midr_a": 0,
+        "layup_m": 0,
+        "layup_a": 0,
+        "dunks": 0,
+        "tips": 0,
+    }
     for aid in sorted(all_athletes):
         stats = stats_by_athlete.get(aid, {})
         pts = int(stats.get("pts", 0))
@@ -1624,24 +1714,92 @@ def _live_player_rows(team_id: str, rows: List[Dict[str, Any]]) -> List[Dict[str
         fg3a = int(stats.get("3pa", 0))
         ftm = int(stats.get("ftm", 0))
         fta = int(stats.get("fta", 0))
+        midr_m = int(stats.get("midr_m", 0))
+        midr_a = int(stats.get("midr_a", 0))
+        layup_m = int(stats.get("layup_m", 0))
+        layup_a = int(stats.get("layup_a", 0))
+        dunks = int(stats.get("dunks", 0))
+        tips = int(stats.get("tips", 0))
+        totals["pts"] += pts
+        totals["reb"] += reb
+        totals["ast"] += ast
+        totals["to"] += to
+        totals["stl"] += stl
+        totals["blk"] += blk
+        totals["pf"] += pf
+        totals["fgm"] += fgm
+        totals["fga"] += fga
+        totals["fg3m"] += fg3m
+        totals["fg3a"] += fg3a
+        totals["ftm"] += ftm
+        totals["fta"] += fta
+        totals["midr_m"] += midr_m
+        totals["midr_a"] += midr_a
+        totals["layup_m"] += layup_m
+        totals["layup_a"] += layup_a
+        totals["dunks"] += dunks
+        totals["tips"] += tips
         rk = unique_row_key(f"live_{tid}_player_{aid}", seen)
-        out.append({
-            "row_key": rk,
+        out.append(
+            {
+                "team_id": tid,
+                **player_display_row(
+                    row_key=rk,
+                    player_name=resolve_athlete_name(aid),
+                    games_played=1,
+                    games_started=0,
+                    points=pts,
+                    rebounds=reb,
+                    assists=ast,
+                    turnovers=to,
+                    steals=stl,
+                    blocks=blk,
+                    personal_fouls=pf,
+                    ftm=ftm,
+                    fta=fta,
+                    fgm=fgm,
+                    fga=fga,
+                    fg3m=fg3m,
+                    fg3a=fg3a,
+                    mid_m=midr_m,
+                    mid_a=midr_a,
+                    layup_m=layup_m,
+                    layup_a=layup_a,
+                    dunks=dunks,
+                    tips=tips,
+                ),
+            }
+        )
+    out.append(
+        {
             "team_id": tid,
-            "Player": resolve_athlete_name(aid),
-            "GP": "1",
-            "MIN": "",
-            "PTS": str(pts),
-            "REB": str(reb),
-            "AST": str(ast),
-            "STL": str(stl),
-            "BLK": str(blk),
-            "TO": str(to),
-            "FG_PCT": _format_pct(fgm, fga),
-            "FG3_PCT": _format_pct(fg3m, fg3a),
-            "FT_PCT": _format_pct(ftm, fta),
-            "PF": str(pf),
-        })
+            **player_display_row(
+                row_key=unique_row_key(f"live_{tid}_player_team", seen),
+                player_name="Team",
+                games_played=1,
+                games_started=1,
+                points=totals["pts"],
+                rebounds=totals["reb"],
+                assists=totals["ast"],
+                turnovers=totals["to"],
+                steals=totals["stl"],
+                blocks=totals["blk"],
+                personal_fouls=totals["pf"],
+                ftm=totals["ftm"],
+                fta=totals["fta"],
+                fgm=totals["fgm"],
+                fga=totals["fga"],
+                fg3m=totals["fg3m"],
+                fg3a=totals["fg3a"],
+                mid_m=totals["midr_m"],
+                mid_a=totals["midr_a"],
+                layup_m=totals["layup_m"],
+                layup_a=totals["layup_a"],
+                dunks=totals["dunks"],
+                tips=totals["tips"],
+            ),
+        }
+    )
     return out
 
 
@@ -2260,7 +2418,6 @@ def build_dataset_context(team_id: str, dataset: str) -> Dict[str, Any]:
 
     team_id = normalize_team_id(team_id)
     service = get_service()
-    service.verify_and_persist_schedule(force=False)
 
     if canonical_dataset == "players":
         payload = service.player_dataset(team_id)

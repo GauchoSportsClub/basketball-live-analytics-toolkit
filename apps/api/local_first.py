@@ -50,27 +50,27 @@ PLAYER_BASE_COLUMNS = [
     "STL",
     "BLK",
     "PF",
-    "FG%",
-    "FT%",
-    "3P%",
 ]
 PLAYER_APPEND_COLUMNS = [
     "FGM",
     "FGA",
+    "FG%",
     "3PM",
     "3PA",
-    "FTM",
-    "FTA",
+    "3P%",
+    "MIDR_M",
+    "MIDR_A",
+    "MIDR%",
     "LAYUP_M",
     "LAYUP_A",
-    "LAYUP_PCT",
-    "DUNK_M",
-    "DUNK_A",
-    "DUNK_PCT",
-    "MID_M",
-    "MID_A",
-    "MID_PCT",
+    "LAYUP%",
+    "DUNKS",
+    "TIPS",
+    "FTM",
+    "FTA",
+    "FT%",
 ]
+PLAYER_TABLE_COLUMNS = ["row_key", *PLAYER_BASE_COLUMNS, *PLAYER_APPEND_COLUMNS]
 LIVE_TEAM_COLUMNS = [
     "row_key",
     "team_id",
@@ -82,23 +82,6 @@ LIVE_TEAM_COLUMNS = [
     "display_value",
     "rank",
     "abbreviation",
-]
-LIVE_PLAYER_COLUMNS = [
-    "row_key",
-    "team_id",
-    "Player",
-    "GP",
-    "MIN",
-    "PTS",
-    "REB",
-    "AST",
-    "STL",
-    "BLK",
-    "TO",
-    "FG_PCT",
-    "FG3_PCT",
-    "FT_PCT",
-    "PF",
 ]
 
 _LAST_REQUEST_AT = 0.0
@@ -226,6 +209,8 @@ def stat_line() -> Dict[str, int]:
         "dunk_a": 0,
         "mid_m": 0,
         "mid_a": 0,
+        "dunks": 0,
+        "tips": 0,
     }
 
 
@@ -233,15 +218,124 @@ def format_pct(makes: int, attempts: int) -> str:
     return f"{makes / attempts:.3f}".lstrip("0") if attempts > 0 else ""
 
 
-def classify_shot_zone(text: str) -> Optional[str]:
-    lowered = str(text or "").lower()
-    if "dunk" in lowered:
+def field_goal_breakdown_metrics(
+    *,
+    fgm: int,
+    fga: int,
+    fg3m: int,
+    fg3a: int,
+    mid_m: int,
+    mid_a: int,
+    layup_m: int,
+    layup_a: int,
+    dunk_m: int,
+    dunk_a: int,
+    tips: int,
+) -> List[Tuple[str, str, str]]:
+    two_pm = max(fgm - fg3m, 0)
+    two_pa = max(fga - fg3a, 0)
+    listed_two_pm = mid_m + layup_m + dunk_m
+    listed_two_pa = mid_a + layup_a + dunk_a
+    make_gap = two_pm - listed_two_pm
+    attempt_gap = two_pa - listed_two_pa
+
+    make_status = "OK" if make_gap == 0 else f"MISMATCH ({make_gap:+d})"
+    attempt_status = "OK" if attempt_gap == 0 else f"MISMATCH ({attempt_gap:+d})"
+
+    reasons: List[str] = []
+    if attempt_gap != 0:
+        tip_note = f"; includes {tips} tracked tip attempt{'s' if tips != 1 else ''}" if tips else ""
+        reasons.append(
+            f"FGA gap {attempt_gap:+d}: 2PT attempts not fully partitioned into MIDR/LAYUP/DUNK{tip_note}"
+        )
+    if make_gap != 0:
+        tip_note = " and may include made tip-ins" if tips else ""
+        reasons.append(
+            f"FGM gap {make_gap:+d}: 2PT makes include shots outside listed make buckets{tip_note}"
+        )
+    if not reasons:
+        reasons.append("FG totals reconcile across listed 3PT, MIDR, LAYUP, and DUNK buckets")
+
+    return [
+        ("fgm_breakdown", "FGM_BREAKDOWN", make_status),
+        ("fga_breakdown", "FGA_BREAKDOWN", attempt_status),
+        ("fg_breakdown_note", "FG_BREAKDOWN_NOTE", " | ".join(reasons)),
+    ]
+
+
+def player_display_row(
+    *,
+    row_key: str,
+    player_name: str,
+    games_played: int,
+    games_started: int,
+    points: int,
+    rebounds: int,
+    assists: int,
+    turnovers: int,
+    steals: int,
+    blocks: int,
+    personal_fouls: int,
+    ftm: int,
+    fta: int,
+    fgm: int,
+    fga: int,
+    fg3m: int,
+    fg3a: int,
+    mid_m: int,
+    mid_a: int,
+    layup_m: int,
+    layup_a: int,
+    dunks: int,
+    tips: int,
+) -> Dict[str, str]:
+    gp = max(int(games_played), 0)
+    return {
+        "row_key": row_key,
+        "Player": player_name,
+        "GP-GS": f"{gp}-{max(int(games_started), 0)}",
+        "MIN": "",
+        "PTS": str(points),
+        "PPG": f"{points / gp:.1f}" if gp else "",
+        "REB": str(rebounds),
+        "RPG": f"{rebounds / gp:.1f}" if gp else "",
+        "AST": str(assists),
+        "APG": f"{assists / gp:.1f}" if gp else "",
+        "TO": str(turnovers),
+        "STL": str(steals),
+        "BLK": str(blocks),
+        "PF": str(personal_fouls),
+        "FGM": str(fgm),
+        "FGA": str(fga),
+        "FG%": format_pct(fgm, fga),
+        "3PM": str(fg3m),
+        "3PA": str(fg3a),
+        "3P%": format_pct(fg3m, fg3a),
+        "MIDR_M": str(mid_m),
+        "MIDR_A": str(mid_a),
+        "MIDR%": format_pct(mid_m, mid_a),
+        "LAYUP_M": str(layup_m),
+        "LAYUP_A": str(layup_a),
+        "LAYUP%": format_pct(layup_m, layup_a),
+        "DUNKS": str(dunks),
+        "TIPS": str(tips),
+        "FTM": str(ftm),
+        "FTA": str(fta),
+        "FT%": format_pct(ftm, fta),
+    }
+
+
+def normalize_play_type(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", str(value or "").lower())
+
+
+def classify_shot_zone(play_type: str, points_attempted: int) -> Optional[str]:
+    normalized = normalize_play_type(play_type)
+    if normalized == "dunkshot":
         return "dunk"
-    if "layup" in lowered:
+    if normalized == "layupshot" and points_attempted == 2:
         return "layup"
-    if any(token in lowered for token in ("jumper", "pullup", "fadeaway")) and all(
-        token not in lowered for token in ("three point", "3-pt", "3pt", "three-pointer")
-    ):
+    if normalized == "jumpshot" and points_attempted == 2:
         return "mid"
     return None
 
@@ -336,20 +430,35 @@ def raw_pbp_source_url(game_id: str, page_index: int, limit: int = 1000) -> str:
     return f"{ESPN_CORE_ROOT}/events/{game_id}/competitions/{game_id}/plays?limit={limit}&pageIndex={page_index}"
 
 
-def fetch_schedule_payload() -> Dict[str, Any]:
-    url = f"{ESPN_SITE_ROOT}/teams/{ROOT_TEAM_ID}/schedule?season={SEASON_YEAR}&seasontype=2"
+def fetch_schedule_payload(team_id: str) -> Dict[str, Any]:
+    url = f"{ESPN_SITE_ROOT}/teams/{team_id}/schedule?season={SEASON_YEAR}&seasontype=2"
     return request_json(url)
 
 
-def parse_schedule_payload(payload: Dict[str, Any]) -> List[Dict[str, str]]:
+def parse_schedule_payload(payload: Dict[str, Any], team_id: str) -> List[Dict[str, str]]:
     games: List[Dict[str, str]] = []
+    normalized_team_id = normalize_team_id(team_id)
     for event in payload.get("events") or []:
         competitions = event.get("competitions") or []
         if not competitions:
             continue
         competitors = competitions[0].get("competitors") or []
-        ours = next((item for item in competitors if str(item.get("team", {}).get("id")) == ROOT_TEAM_ID), None)
-        opp = next((item for item in competitors if str(item.get("team", {}).get("id")) != ROOT_TEAM_ID), None)
+        ours = next(
+            (
+                item
+                for item in competitors
+                if team_id_matches(str(item.get("team", {}).get("id") or ""), normalized_team_id)
+            ),
+            None,
+        )
+        opp = next(
+            (
+                item
+                for item in competitors
+                if not team_id_matches(str(item.get("team", {}).get("id") or ""), normalized_team_id)
+            ),
+            None,
+        )
         if not ours or not opp:
             continue
         games.append(
@@ -541,8 +650,8 @@ def derive_game_stats(
         shooting_play = bool(play.get("shooting_play"))
         score_value = int(play.get("score_value") or 0)
         points_attempted = int(play.get("points_attempted") or 0)
-        play_type = str(play.get("play_type") or play.get("type") or "").lower()
-        text = str(play.get("text") or "")
+        play_type_raw = str(play.get("play_type") or play.get("type") or "")
+        play_type = normalize_play_type(play_type_raw)
 
         if scoring_play:
             team_stats["points"] += score_value
@@ -566,10 +675,18 @@ def derive_game_stats(
                 team_stats["fg3a"] += 1
                 if player_stats:
                     player_stats["fg3a"] += 1
-            zone = classify_shot_zone(text)
+            zone = classify_shot_zone(play_type_raw, points_attempted)
             _update_zone(team_stats, zone, scoring_play)
             if player_stats:
                 _update_zone(player_stats, zone, scoring_play)
+            if play_type == "dunkshot":
+                team_stats["dunks"] += 1
+                if player_stats:
+                    player_stats["dunks"] += 1
+            if play_type == "tipshot":
+                team_stats["tips"] += 1
+                if player_stats:
+                    player_stats["tips"] += 1
 
         if scoring_play and score_value in (2, 3):
             team_stats["fgm"] += 1
@@ -637,6 +754,28 @@ class BuildService:
         self.object_store = object_store or LocalObjectStore()
         self._lock = threading.Lock()
         self.db.migrate()
+        self.recover_incomplete_jobs()
+
+    def recover_incomplete_jobs(self) -> None:
+        timestamp = now_iso()
+        self.db.execute(
+            """
+            UPDATE build_jobs
+            SET status = 'failed',
+                message = CASE
+                    WHEN message = '' THEN 'Build interrupted before completion.'
+                    ELSE message
+                END,
+                error_message = CASE
+                    WHEN error_message = '' THEN 'Build interrupted by API restart or worker exit. Re-run the build.'
+                    ELSE error_message
+                END,
+                finished_at = COALESCE(finished_at, ?),
+                updated_at = ?
+            WHERE status IN ('queued', 'running')
+            """,
+            (timestamp, timestamp),
+        )
 
     def ensure_supported_teams(self) -> List[Dict[str, Any]]:
         existing = self.db.fetch_all("SELECT * FROM teams ORDER BY conference_name, display_name")
@@ -669,22 +808,24 @@ class BuildService:
             )
         return self.db.fetch_all("SELECT * FROM teams ORDER BY conference_name, display_name")
 
-    def verify_and_persist_schedule(self, force: bool = False) -> List[Dict[str, Any]]:
+    def verify_and_persist_schedule(self, team_id: str = ROOT_TEAM_ID, force: bool = False) -> List[Dict[str, Any]]:
+        normalized_team_id = normalize_team_id(team_id)
         row = self.db.fetch_one(
             "SELECT COUNT(*) AS count FROM schedule_games WHERE season_id = ? AND season_type = ? AND team_id = ?",
-            (SEASON_ID, SEASON_TYPE, ROOT_TEAM_ID),
+            (SEASON_ID, SEASON_TYPE, normalized_team_id),
         )
         if force or not row or int(row["count"]) == 0:
-            live_payload = fetch_schedule_payload()
-            live_games = parse_schedule_payload(live_payload)
-            validate_schedule(live_games)
+            live_payload = fetch_schedule_payload(normalized_team_id)
+            live_games = parse_schedule_payload(live_payload, normalized_team_id)
+            if team_id_matches(normalized_team_id, ROOT_TEAM_ID):
+                validate_schedule(live_games)
             self.db.execute(
                 "INSERT OR REPLACE INTO seasons (season_id, season_type, label, is_locked) VALUES (?, ?, ?, 1)",
                 (SEASON_ID, SEASON_TYPE, "2025-2026 Regular Season"),
             )
             self.db.execute(
                 "DELETE FROM schedule_games WHERE season_id = ? AND season_type = ? AND team_id = ?",
-                (SEASON_ID, SEASON_TYPE, ROOT_TEAM_ID),
+                (SEASON_ID, SEASON_TYPE, normalized_team_id),
             )
             self.db.executemany(
                 """
@@ -697,7 +838,7 @@ class BuildService:
                     (
                         SEASON_ID,
                         SEASON_TYPE,
-                        ROOT_TEAM_ID,
+                        normalized_team_id,
                         game["game_id"],
                         game["date"],
                         game["opponent_team_id"],
@@ -718,7 +859,7 @@ class BuildService:
             WHERE season_id = ? AND season_type = ? AND team_id = ?
             ORDER BY game_date, game_id
             """,
-            (SEASON_ID, SEASON_TYPE, ROOT_TEAM_ID),
+            (SEASON_ID, SEASON_TYPE, normalized_team_id),
         )
 
     def _set_job(
@@ -814,7 +955,7 @@ class BuildService:
 
     def _run_schedule_job(self, job_id: str, _: str, force: bool) -> None:
         try:
-            games = self.verify_and_persist_schedule(force=force)
+            games = self.verify_and_persist_schedule(ROOT_TEAM_ID, force=force)
             self._set_job(
                 job_id,
                 status="succeeded",
@@ -836,7 +977,7 @@ class BuildService:
 
     def _run_season_job(self, job_id: str, team_id: str, force: bool) -> None:
         try:
-            games = self.verify_and_persist_schedule(force=force)
+            games = self.verify_and_persist_schedule(team_id, force=force)
             self._set_job(
                 job_id,
                 status="running",
@@ -1025,13 +1166,14 @@ class BuildService:
             """
             INSERT INTO game_team_stats (
                 game_id, team_id, games_played, points, rebounds, assists, turnovers, steals, blocks,
-                personal_fouls, fgm, fga, fg3m, fg3a, ftm, fta, layup_m, layup_a, dunk_m, dunk_a, mid_m, mid_a
-            ) VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                personal_fouls, fgm, fga, fg3m, fg3a, ftm, fta, layup_m, layup_a, dunk_m, dunk_a, mid_m, mid_a, dunks, tips
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
                     game_id,
                     team_id,
+                    1,
                     stats["points"],
                     stats["rebounds"],
                     stats["assists"],
@@ -1051,6 +1193,8 @@ class BuildService:
                     stats["dunk_a"],
                     stats["mid_m"],
                     stats["mid_a"],
+                    stats["dunks"],
+                    stats["tips"],
                 )
                 for team_id, stats in team_rows
             ],
@@ -1060,8 +1204,8 @@ class BuildService:
             INSERT INTO game_player_stats (
                 game_id, team_id, player_key, athlete_id, player_name, games_played, points, rebounds, assists,
                 turnovers, steals, blocks, personal_fouls, fgm, fga, fg3m, fg3a, ftm, fta,
-                layup_m, layup_a, dunk_m, dunk_a, mid_m, mid_a
-            ) VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                layup_m, layup_a, dunk_m, dunk_a, mid_m, mid_a, dunks, tips
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -1070,6 +1214,7 @@ class BuildService:
                     row["player_key"],
                     row["athlete_id"],
                     row["player_name"],
+                    1,
                     row["points"],
                     row["rebounds"],
                     row["assists"],
@@ -1089,6 +1234,8 @@ class BuildService:
                     row["dunk_a"],
                     row["mid_m"],
                     row["mid_a"],
+                    row["dunks"],
+                    row["tips"],
                 )
                 for row in player_rows
             ],
@@ -1111,8 +1258,8 @@ class BuildService:
             INSERT INTO season_player_stats (
                 season_id, season_type, team_id, player_key, athlete_id, player_name, games_played, points,
                 rebounds, assists, turnovers, steals, blocks, personal_fouls, fgm, fga, fg3m, fg3a,
-                ftm, fta, layup_m, layup_a, dunk_m, dunk_a, mid_m, mid_a
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ftm, fta, layup_m, layup_a, dunk_m, dunk_a, mid_m, mid_a, dunks, tips
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -1142,6 +1289,8 @@ class BuildService:
                     row["dunk_a"],
                     row["mid_m"],
                     row["mid_a"],
+                    row["dunks"],
+                    row["tips"],
                 )
                 for row in aggregated_players
             ],
@@ -1151,8 +1300,8 @@ class BuildService:
             INSERT INTO season_team_stats (
                 season_id, season_type, team_id, games_played, points, rebounds, assists, turnovers,
                 steals, blocks, personal_fouls, fgm, fga, fg3m, fg3a, ftm, fta, layup_m, layup_a,
-                dunk_m, dunk_a, mid_m, mid_a
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                dunk_m, dunk_a, mid_m, mid_a, dunks, tips
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -1179,6 +1328,8 @@ class BuildService:
                     row["dunk_a"],
                     row["mid_m"],
                     row["mid_a"],
+                    row["dunks"],
+                    row["tips"],
                 )
                 for row in aggregated_teams
             ],
@@ -1188,30 +1339,15 @@ class BuildService:
         return schedule_config()["games"][0]["game_id"]
 
     def schedule_for_team(self, team_id: str) -> List[Dict[str, Any]]:
-        games = self.verify_and_persist_schedule(force=False)
-        if normalize_team_id(team_id) == normalize_team_id(ROOT_TEAM_ID):
-            return [
-                {
-                    **game,
-                    "label": f"{game['date']} {'vs' if game['home_away'] == 'home' else 'at'} {game['opponent_name']}",
-                }
-                for game in games
-            ]
-        filtered: List[Dict[str, Any]] = []
-        for game in games:
-            if not team_id_matches(game["opponent_team_id"], team_id):
-                continue
-            filtered.append(
-                {
-                    "game_id": game["game_id"],
-                    "date": game["date"],
-                    "opponent_team_id": ROOT_TEAM_ID,
-                    "opponent_name": ROOT_TEAM_NAME,
-                    "home_away": "away" if game["home_away"] == "home" else "home",
-                    "label": f"{game['date']} {'at' if game['home_away'] == 'home' else 'vs'} UC Santa Barbara",
-                }
-            )
-        return filtered
+        normalized_team_id = normalize_team_id(team_id)
+        games = self.verify_and_persist_schedule(normalized_team_id, force=False)
+        return [
+            {
+                **game,
+                "label": f"{game['date']} {'vs' if game['home_away'] == 'home' else 'at'} {game['opponent_name']}",
+            }
+            for game in games
+        ]
 
     def season_team_rows(self, team_id: str) -> List[Dict[str, str]]:
         row = self.db.fetch_one(
@@ -1231,25 +1367,39 @@ class BuildService:
             ("steals", "Steals", str(row["steals"])),
             ("blocks", "Blocks", str(row["blocks"])),
             ("personal_fouls", "Personal Fouls", str(row["personal_fouls"])),
-            ("fg_pct", "FG%", format_pct(int(row["fgm"]), int(row["fga"]))),
-            ("ft_pct", "FT%", format_pct(int(row["ftm"]), int(row["fta"]))),
-            ("fg3_pct", "3P%", format_pct(int(row["fg3m"]), int(row["fg3a"]))),
             ("fgm", "FGM", str(row["fgm"])),
             ("fga", "FGA", str(row["fga"])),
+            ("fg_pct", "FG%", format_pct(int(row["fgm"]), int(row["fga"]))),
             ("fg3m", "3PM", str(row["fg3m"])),
             ("fg3a", "3PA", str(row["fg3a"])),
-            ("ftm", "FTM", str(row["ftm"])),
-            ("fta", "FTA", str(row["fta"])),
+            ("fg3_pct", "3P%", format_pct(int(row["fg3m"]), int(row["fg3a"]))),
+            ("mid_m", "MIDR_M", str(row["mid_m"])),
+            ("mid_a", "MIDR_A", str(row["mid_a"])),
+            ("mid_pct", "MIDR%", format_pct(int(row["mid_m"]), int(row["mid_a"]))),
             ("layup_m", "LAYUP_M", str(row["layup_m"])),
             ("layup_a", "LAYUP_A", str(row["layup_a"])),
-            ("layup_pct", "LAYUP_PCT", format_pct(int(row["layup_m"]), int(row["layup_a"]))),
-            ("dunk_m", "DUNK_M", str(row["dunk_m"])),
-            ("dunk_a", "DUNK_A", str(row["dunk_a"])),
-            ("dunk_pct", "DUNK_PCT", format_pct(int(row["dunk_m"]), int(row["dunk_a"]))),
-            ("mid_m", "MID_M", str(row["mid_m"])),
-            ("mid_a", "MID_A", str(row["mid_a"])),
-            ("mid_pct", "MID_PCT", format_pct(int(row["mid_m"]), int(row["mid_a"]))),
+            ("layup_pct", "LAYUP%", format_pct(int(row["layup_m"]), int(row["layup_a"]))),
+            ("dunks", "DUNKS", str(row.get("dunks") or 0)),
+            ("tips", "TIPS", str(row.get("tips") or 0)),
+            ("ftm", "FTM", str(row["ftm"])),
+            ("fta", "FTA", str(row["fta"])),
+            ("ft_pct", "FT%", format_pct(int(row["ftm"]), int(row["fta"]))),
         ]
+        metrics.extend(
+            field_goal_breakdown_metrics(
+                fgm=int(row["fgm"]),
+                fga=int(row["fga"]),
+                fg3m=int(row["fg3m"]),
+                fg3a=int(row["fg3a"]),
+                mid_m=int(row["mid_m"]),
+                mid_a=int(row["mid_a"]),
+                layup_m=int(row["layup_m"]),
+                layup_a=int(row["layup_a"]),
+                dunk_m=int(row["dunk_m"]),
+                dunk_a=int(row["dunk_a"]),
+                tips=int(row.get("tips") or 0),
+            )
+        )
         return [
             {"row_key": f"{team_id}_{key}", "metric": label, "value": value, "team": value, "opp": ""}
             for key, label, value in metrics
@@ -1275,76 +1425,58 @@ class BuildService:
             for key in totals:
                 totals[key] += int(row[key] or 0)
             display_rows.append(
-                {
-                    "row_key": f"{team_id}_{row['player_key']}",
-                    "Player": row["player_name"],
-                    "GP-GS": f"{gp}-0",
-                    "MIN": "",
-                    "PTS": str(row["points"]),
-                    "PPG": f"{int(row['points']) / gp:.1f}" if gp else "",
-                    "REB": str(row["rebounds"]),
-                    "RPG": f"{int(row['rebounds']) / gp:.1f}" if gp else "",
-                    "AST": str(row["assists"]),
-                    "APG": f"{int(row['assists']) / gp:.1f}" if gp else "",
-                    "TO": str(row["turnovers"]),
-                    "STL": str(row["steals"]),
-                    "BLK": str(row["blocks"]),
-                    "PF": str(row["personal_fouls"]),
-                    "FG%": format_pct(int(row["fgm"]), int(row["fga"])),
-                    "FT%": format_pct(int(row["ftm"]), int(row["fta"])),
-                    "3P%": format_pct(int(row["fg3m"]), int(row["fg3a"])),
-                    "FGM": str(row["fgm"]),
-                    "FGA": str(row["fga"]),
-                    "3PM": str(row["fg3m"]),
-                    "3PA": str(row["fg3a"]),
-                    "FTM": str(row["ftm"]),
-                    "FTA": str(row["fta"]),
-                    "LAYUP_M": str(row["layup_m"]),
-                    "LAYUP_A": str(row["layup_a"]),
-                    "LAYUP_PCT": format_pct(int(row["layup_m"]), int(row["layup_a"])),
-                    "DUNK_M": str(row["dunk_m"]),
-                    "DUNK_A": str(row["dunk_a"]),
-                    "DUNK_PCT": format_pct(int(row["dunk_m"]), int(row["dunk_a"])),
-                    "MID_M": str(row["mid_m"]),
-                    "MID_A": str(row["mid_a"]),
-                    "MID_PCT": format_pct(int(row["mid_m"]), int(row["mid_a"])),
-                }
+                player_display_row(
+                    row_key=f"{team_id}_{row['player_key']}",
+                    player_name=str(row["player_name"]),
+                    games_played=gp,
+                    games_started=0,
+                    points=int(row["points"]),
+                    rebounds=int(row["rebounds"]),
+                    assists=int(row["assists"]),
+                    turnovers=int(row["turnovers"]),
+                    steals=int(row["steals"]),
+                    blocks=int(row["blocks"]),
+                    personal_fouls=int(row["personal_fouls"]),
+                    ftm=int(row["ftm"]),
+                    fta=int(row["fta"]),
+                    fgm=int(row["fgm"]),
+                    fga=int(row["fga"]),
+                    fg3m=int(row["fg3m"]),
+                    fg3a=int(row["fg3a"]),
+                    mid_m=int(row["mid_m"]),
+                    mid_a=int(row["mid_a"]),
+                    layup_m=int(row["layup_m"]),
+                    layup_a=int(row["layup_a"]),
+                    dunks=int(row.get("dunks") or 0),
+                    tips=int(row.get("tips") or 0),
+                )
             )
         display_rows.append(
-            {
-                "row_key": f"{team_id}_team",
-                "Player": "Team",
-                "GP-GS": f"{max_gp}-{max_gp}" if max_gp else "0-0",
-                "MIN": "",
-                "PTS": str(totals["points"]),
-                "PPG": f"{totals['points'] / max_gp:.1f}" if max_gp else "",
-                "REB": str(totals["rebounds"]),
-                "RPG": f"{totals['rebounds'] / max_gp:.1f}" if max_gp else "",
-                "AST": str(totals["assists"]),
-                "APG": f"{totals['assists'] / max_gp:.1f}" if max_gp else "",
-                "TO": str(totals["turnovers"]),
-                "STL": str(totals["steals"]),
-                "BLK": str(totals["blocks"]),
-                "PF": str(totals["personal_fouls"]),
-                "FG%": format_pct(totals["fgm"], totals["fga"]),
-                "FT%": format_pct(totals["ftm"], totals["fta"]),
-                "3P%": format_pct(totals["fg3m"], totals["fg3a"]),
-                "FGM": str(totals["fgm"]),
-                "FGA": str(totals["fga"]),
-                "3PM": str(totals["fg3m"]),
-                "3PA": str(totals["fg3a"]),
-                "FTM": str(totals["ftm"]),
-                "FTA": str(totals["fta"]),
-                "LAYUP_M": str(totals["layup_m"]),
-                "LAYUP_A": str(totals["layup_a"]),
-                "LAYUP_PCT": format_pct(totals["layup_m"], totals["layup_a"]),
-                "DUNK_M": str(totals["dunk_m"]),
-                "DUNK_A": str(totals["dunk_a"]),
-                "DUNK_PCT": format_pct(totals["dunk_m"], totals["dunk_a"]),
-                "MID_M": str(totals["mid_m"]),
-                "MID_A": str(totals["mid_a"]),
-                "MID_PCT": format_pct(totals["mid_m"], totals["mid_a"]),
-            }
+            player_display_row(
+                row_key=f"{team_id}_team",
+                player_name="Team",
+                games_played=max_gp,
+                games_started=max_gp,
+                points=totals["points"],
+                rebounds=totals["rebounds"],
+                assists=totals["assists"],
+                turnovers=totals["turnovers"],
+                steals=totals["steals"],
+                blocks=totals["blocks"],
+                personal_fouls=totals["personal_fouls"],
+                ftm=totals["ftm"],
+                fta=totals["fta"],
+                fgm=totals["fgm"],
+                fga=totals["fga"],
+                fg3m=totals["fg3m"],
+                fg3a=totals["fg3a"],
+                mid_m=totals["mid_m"],
+                mid_a=totals["mid_a"],
+                layup_m=totals["layup_m"],
+                layup_a=totals["layup_a"],
+                dunks=totals["dunks"],
+                tips=totals["tips"],
+            )
         )
         return display_rows
 
@@ -1368,17 +1500,17 @@ class LocalFirstService:
     def load_schedule_reference(self) -> Dict[str, Any]:
         return schedule_config()
 
-    def parse_schedule_payload(self, payload: Dict[str, Any]) -> List[Dict[str, str]]:
-        return parse_schedule_payload(payload)
+    def parse_schedule_payload(self, payload: Dict[str, Any], team_id: str = ROOT_TEAM_ID) -> List[Dict[str, str]]:
+        return parse_schedule_payload(payload, team_id)
 
     def validate_schedule(self, live_games: Sequence[Dict[str, str]]) -> None:
         validate_schedule(live_games)
 
-    def verify_and_persist_schedule(self, force: bool = False) -> List[Dict[str, Any]]:
-        return self.build_service.verify_and_persist_schedule(force=force)
+    def verify_and_persist_schedule(self, team_id: str = ROOT_TEAM_ID, force: bool = False) -> List[Dict[str, Any]]:
+        return self.build_service.verify_and_persist_schedule(team_id, force=force)
 
     def supported_teams_payload(self, force_refresh: bool = False) -> Dict[str, Any]:
-        self.verify_and_persist_schedule(force=False)
+        self.verify_and_persist_schedule(ROOT_TEAM_ID, force=False)
         if force_refresh:
             self.db.execute("DELETE FROM teams")
         teams = [
@@ -1413,15 +1545,19 @@ class LocalFirstService:
 
     def player_dataset(self, team_id: str) -> Dict[str, Any]:
         normalized_team_id = normalize_team_id(team_id)
+        if normalized_team_id not in self._allowed_team_ids():
+            raise ValueError("team_id must be UCSB or a UCSB regular-season opponent")
         rows = self.build_service.season_player_rows(normalized_team_id)
         return {
             "team_id": normalized_team_id,
-            "columns": ["row_key", *PLAYER_BASE_COLUMNS, *PLAYER_APPEND_COLUMNS],
+            "columns": PLAYER_TABLE_COLUMNS,
             "rows": rows,
         }
 
     def team_dataset(self, team_id: str) -> Dict[str, Any]:
         normalized_team_id = normalize_team_id(team_id)
+        if normalized_team_id not in self._allowed_team_ids():
+            raise ValueError("team_id must be UCSB or a UCSB regular-season opponent")
         rows = self.build_service.season_team_rows(normalized_team_id)
         return {
             "team_id": normalized_team_id,
@@ -1555,14 +1691,15 @@ class LocalFirstService:
 
     def _run_job(self, job_id: str, job_type: str, team_id: str, force: bool) -> None:
         try:
-            games = self.verify_and_persist_schedule(force=force if job_type == "schedule" else False)
+            schedule_team_id = ROOT_TEAM_ID if job_type == "schedule" else team_id
+            games = self.verify_and_persist_schedule(schedule_team_id, force=force if job_type == "schedule" else force)
             self._set_job(
                 job_id,
                 status="running",
                 stage="schedule_discovery",
                 current_game_index=0 if job_type == "season" else len(games),
                 total_games=len(games),
-                message=f"Verified {len(games)} UCSB schedule games.",
+                message=f"Verified {len(games)} schedule games for {schedule_team_id}.",
             )
             if job_type == "schedule":
                 self._set_job(
@@ -1571,7 +1708,7 @@ class LocalFirstService:
                     stage="schedule_discovery",
                     current_game_index=len(games),
                     total_games=len(games),
-                    message=f"Verified {len(games)} UCSB schedule games.",
+                    message=f"Verified {len(games)} schedule games for {schedule_team_id}.",
                 )
                 return
 

@@ -30,6 +30,19 @@ function CollapseButton({ panelRef, collapsed, onCollapsedChange, title }) {
     </button>
   );
 }
+
+function InfoTooltipButton({ text, label = "Info" }) {
+  return (
+    <span className="info-tooltip">
+      <button type="button" className="neutral" aria-label="Season scope information">
+        {label}
+      </button>
+      <span className="info-tooltip-bubble" role="tooltip">
+        {text}
+      </span>
+    </span>
+  );
+}
 import { evidenceLabel, resolveEvidenceTarget } from "./evidenceNavigation";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
@@ -426,9 +439,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    const targetTeamId = normalizedOpponentTeamId || UCSB_TEAM_ID;
-    loadScheduleGames(targetTeamId);
-  }, [loadScheduleGames, normalizedOpponentTeamId]);
+    loadScheduleGames(UCSB_TEAM_ID);
+  }, [loadScheduleGames]);
 
   const loadSeasonPlayers = useCallback(async (side, teamId) => {
     const normalizedTeamId = normalizeTeamIdInput(teamId);
@@ -561,31 +573,27 @@ export default function App() {
     }
   }, [loadPbp, pbpGameId]);
 
-  const startBuild = useCallback(
-    async (mode) => {
-      setBuildError("");
-      try {
-        const url =
-          mode === "schedule"
-            ? `${API_BASE}/api/build/ucsb/${LOCKED_SEASON_ID}/${LOCKED_SEASON_TYPE_SLUG}/schedule`
-            : `${API_BASE}/api/build/ucsb/${LOCKED_SEASON_ID}/${LOCKED_SEASON_TYPE_SLUG}/season?team_id=${encodeURIComponent(
-                normalizedOpponentTeamId || UCSB_TEAM_ID
-              )}`;
-        const payload = await fetchJson(
-          url,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" }
-          },
-          1
-        );
-        setBuildJob(payload.job || null);
-      } catch (error) {
-        setBuildError(error.message);
-      }
-    },
-    [normalizedOpponentTeamId]
-  );
+  const startBuild = useCallback(async () => {
+    setBuildError("");
+    const targetTeamId = activeSeasonSide === "ucsb" ? UCSB_TEAM_ID : normalizedOpponentTeamId;
+    if (activeSeasonSide === "opponent" && !targetTeamId) {
+      setBuildError("Select an opponent before building opponent season data.");
+      return;
+    }
+    try {
+      const payload = await fetchJson(
+        `${API_BASE}/api/build/ucsb/${LOCKED_SEASON_ID}/${LOCKED_SEASON_TYPE_SLUG}/season?team_id=${encodeURIComponent(targetTeamId)}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" }
+        },
+        1
+      );
+      setBuildJob(payload.job || null);
+    } catch (error) {
+      setBuildError(error.message);
+    }
+  }, [activeSeasonSide, normalizedOpponentTeamId]);
 
   useEffect(() => {
     if (!buildJob?.job_id || !["queued", "running"].includes(buildJob.status)) {
@@ -599,8 +607,8 @@ export default function App() {
           loadSeasonPlayers("ucsb", UCSB_TEAM_ID);
           if (normalizedOpponentTeamId) {
             loadSeasonPlayers("opponent", normalizedOpponentTeamId);
-            loadScheduleGames(normalizedOpponentTeamId);
           }
+          loadScheduleGames(UCSB_TEAM_ID);
           loadPbp(pbpGameId);
           loadLiveStats();
         }
@@ -723,7 +731,6 @@ export default function App() {
   const activeSeasonPlayersError = seasonPlayersError[activeSeasonSide];
   const activeSeasonPlayersTableState = seasonPlayersTableState[activeSeasonSide];
   const livePlayersData = liveStats[`${activeLivePrefix}_players`] || { columns: [], rows: [] };
-  const livePlayerRows = liveStats[`${activeLivePrefix}_players`]?.rows?.length ?? 0;
   const activeLivePlayersTableState = livePlayersTableState[activeLiveSide];
   const pbpCanApply = canApplyPbpAdvancedFilters(pbpAdvancedFiltersDraft);
   const pbpFiltersDirty = !pbpAdvancedFiltersEqual(pbpAdvancedFiltersDraft, pbpAppliedFilters);
@@ -766,17 +773,6 @@ export default function App() {
     }
     return Array.from(opts).sort((a, b) => a.localeCompare(b));
   }, [pbpAdvancedFiltersDraft.types, pbpData.rows]);
-  const activeLiveTeamRows = liveStats[`${activeLivePrefix}_team`]?.rows || [];
-  const liveTeamSummary = useMemo(() => {
-    if (!activeLiveTeamRows.length) {
-      return "";
-    }
-    const stats = {};
-    for (const row of activeLiveTeamRows) {
-      stats[row.stat_key] = row.display_value || row.value;
-    }
-    return `PTS ${stats.pts || "0"} | REB ${stats.reb || "0"} | AST ${stats.ast || "0"} | FG% ${stats.fg_pct || "0"} | 3P% ${stats["3p_pct"] || "0"} | FT% ${stats.ft_pct || "0"}`;
-  }, [activeLiveTeamRows]);
   const pbpPeriodOptions = useMemo(() => {
     const opts = new Set();
     for (const row of pbpData.rows) {
@@ -1051,8 +1047,7 @@ export default function App() {
             </div>
 
             <div className="table-status">
-              <span> Season: {LOCKED_SEASON_ID} {LOCKED_SEASON_TYPE_LABEL} only.</span>
-              <span> Scope: UCSB plus opponents on UCSB&apos;s schedule only.</span>
+              <InfoTooltipButton text="Season: 2025-2026 Regular Season only. Scope: UCSB plus opponents on UCSB's schedule only." />
               {activeSeasonPlayersLoading ? <span> Loading season players...</span> : null}
               {activeSeasonPlayersError ? <span className="error"> {activeSeasonPlayersError}</span> : null}
               {teamsLoading ? <span> Loading ESPN teams...</span> : null}
@@ -1067,10 +1062,7 @@ export default function App() {
               {activeSeasonSide === "opponent" && !normalizedOpponentTeamId ? <span> Select an opponent team to view opponent data.</span> : null}
             </div>
             <div className="table-status">
-              <button type="button" onClick={() => startBuild("schedule")} disabled={Boolean(buildJob && buildJob.status === "running")}>
-                Refresh Schedule
-              </button>
-              <button type="button" onClick={() => startBuild("season")} disabled={Boolean(buildJob && buildJob.status === "running")}>
+              <button type="button" onClick={startBuild} disabled={Boolean(buildJob && buildJob.status === "running")}>
                 Build Season Data
               </button>
               {buildJob?.message ? <span>{buildJob.message}</span> : null}
@@ -1186,17 +1178,9 @@ export default function App() {
                 <div className="table-status">
                   {liveStatsLoading ? <span> Loading live stats...</span> : null}
                   {liveStatsError ? <span className="error"> {liveStatsError}</span> : null}
-                  {liveTeamSummary ? <span> {liveTeamSummary}</span> : null}
                   {!pbpData.rows.length ? (
                     <span> Live stats are derived from play-by-play data. Click Update above to fetch PBP first.</span>
-                  ) : (
-                    <span> Derived from play-by-play ({pbpData.rows.length} plays).</span>
-                  )}
-                </div>
-                <div className="table-status">
-                  <span>
-                    {activeLiveSide === "ucsb" ? "UCSB" : "Opponent"} live player rows: {livePlayerRows}
-                  </span>
+                  ) : null}
                 </div>
                 <DataTable
                   columns={livePlayersData.columns}
