@@ -79,12 +79,17 @@ ESPN_PBP_LEAGUE = "mens-college-basketball"
 ESPN_PBP_GAME_ID = "401809115"
 PBP_SCHEMA_VERSION = "espn-pbp-v1"
 
+# http://sports.core.api.espn.com/v2/sports/basketball/leagues/mens-college-basketball/seasons/2026/teams/2540/events?limit=50&lang=en&region=us
+# https://cdn.espn.com/core/mens-college-basketball/playbyplay?gameid=401826049&xhr=1&render=false&userab=18
 ESPN_LEAGUE = "mens-college-basketball"
 ESPN_SPORT = "basketball"
 ESPN_CORE_BASE = "https://sports.core.api.espn.com/v2/sports"
 ESPN_LEAGUE_ROOT_URL = f"{ESPN_CORE_BASE}/{ESPN_SPORT}/leagues/{ESPN_LEAGUE}"
 ESPN_DATA_ROOT = DATA_ROOT / "espn"
 ESPN_TEAMS_CACHE_FILENAME = f"teams-{SEASON_LABEL}.json"
+
+ESPN_CDN_ROOT_URL =f"https://cdn.espn.com/core/{ESPN_LEAGUE}"
+getPBPURL = lambda game_id: f"{ESPN_CDN_ROOT_URL}/playbyplay?gameid={game_id}&xhr=1&render=false&userab=18"
 
 # PDF season stats (first page only): analytics_engine/data/*.pdf
 PDF_DATA_ROOT = REPO_ROOT / "analytics_engine" / "data"
@@ -2848,6 +2853,17 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "schema_version": manifest.get("schema_version", SCHEMA_VERSION),
                     },
                 )
+            except Exception as exc:  # noqa: BLE001
+                self._send_json(500, {"error": str(exc)})
+            return
+
+        if path == '/api/gameids':
+            try:
+                games = fetch_json(f'http://sports.core.api.espn.com/v2/sports/basketball/leagues/mens-college-basketball/seasons/2026/teams/{DEFAULT_UCSB_TEAM_ID}/events?limit=50&lang=en&region=us')
+                r = []
+                for item in games['items']:
+                    r.append(re.search(r'/events/(40\d+)', item.get('$ref', 'NONONO')).group(1))
+                self._send_json(200, {"games": r})
             except Exception as exc:  # noqa: BLE001
                 self._send_json(500, {"error": str(exc)})
             return
