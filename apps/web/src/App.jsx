@@ -36,10 +36,8 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
 const UCSB_TEAM_ID = "2540";
 const PBP_TEAM_ID = "pbp";
-const PBP_GAME_OPTIONS = [
-  { value: "401809115", label: "401809115" },
-  { value: "401826049", label: "401826049" }
-];
+// NOTE: ONLY PDF VALID GAME IDS: 401809115 AND 401826049
+
 const HIDDEN_COLUMNS = new Set(["row_key"]);
 
 const DEFAULT_TABLE_STATE = {
@@ -273,6 +271,7 @@ export default function App() {
 
   const [pbpData, setPbpData] = useState({ columns: [], rows: [], team_id: PBP_TEAM_ID, updated_at: "", source_url: "" });
   const [pbpGameId, setPbpGameId] = useState("401809115");
+  const [pbpGameOptions, setPbpGameOptions] = useState([]);
   const [pbpTableState, setPbpTableState] = useState({ ...DEFAULT_TABLE_STATE });
   const [pbpAdvancedFiltersDraft, setPbpAdvancedFiltersDraft] = useState({ ...DEFAULT_PBP_ADVANCED_FILTERS });
   const [pbpAppliedFilters, setPbpAppliedFilters] = useState({ ...DEFAULT_PBP_ADVANCED_FILTERS });
@@ -339,6 +338,21 @@ export default function App() {
   useEffect(() => {
     loadEspnTeams();
   }, [loadEspnTeams]);
+
+  const loadPbpIds = useCallback(async () => {
+    try {
+      const payload = await fetchJson(`${API_BASE}/api/gameids`, {}, 1);
+      setPbpGameOptions(
+        payload.games.map(id => ({ value: id, label: id }))
+      );
+    } catch (error) {
+      console.error("Error fetching PBP IDs:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPbpIds();
+  }, [loadPbpIds]);
 
   const loadSeasonPlayers = useCallback(async (side, teamId) => {
     const normalizedTeamId = normalizeTeamIdInput(teamId);
@@ -964,7 +978,7 @@ export default function App() {
                     onChange={(e) => setPbpGameId(e.target.value)}
                     disabled={pbpUpdating}
                   >
-                    {PBP_GAME_OPTIONS.map((opt) => (
+                    {pbpGameOptions.map((opt) => (
                       <option key={opt.value} value={opt.value}>
                         {opt.label}
                       </option>
