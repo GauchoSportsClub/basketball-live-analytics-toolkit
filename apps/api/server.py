@@ -79,6 +79,8 @@ ESPN_PBP_LEAGUE = "mens-college-basketball"
 ESPN_PBP_GAME_ID = "401809115"
 PBP_SCHEMA_VERSION = "espn-pbp-v1"
 
+# http://sports.core.api.espn.com/v2/sports/basketball/leagues/mens-college-basketball/seasons/2026/teams/2540/events?limit=50&lang=en&region=us
+# https://cdn.espn.com/core/mens-college-basketball/playbyplay?gameid=401826049&xhr=1&render=false&userab=18
 ESPN_LEAGUE = "mens-college-basketball"
 ESPN_SPORT = "basketball"
 ESPN_CORE_BASE = "https://sports.core.api.espn.com/v2/sports"
@@ -86,16 +88,23 @@ ESPN_LEAGUE_ROOT_URL = f"{ESPN_CORE_BASE}/{ESPN_SPORT}/leagues/{ESPN_LEAGUE}"
 ESPN_DATA_ROOT = DATA_ROOT / "espn"
 ESPN_TEAMS_CACHE_FILENAME = f"teams-{SEASON_LABEL}.json"
 
+ESPN_CDN_ROOT_URL =f"https://cdn.espn.com/core/{ESPN_LEAGUE}"
+getPBPURL = lambda game_id: f"{ESPN_CDN_ROOT_URL}/playbyplay?gameid={game_id}&xhr=1&render=false&userab=18"
+
 # PDF season stats (first page only): analytics_engine/data/*.pdf
 PDF_DATA_ROOT = REPO_ROOT / "analytics_engine" / "data"
 PDF_TEAM_FILES: Dict[str, str] = {
     "ucsb": "ucsb-season-stats.pdf",
     "2540": "ucsb-season-stats.pdf",
+    "ucsd": "ucsd-season-stats.pdf",
+    "28": "ucsd-season-stats.pdf",
     "ucr": "ucr-season-stats.pdf",
 }
 PDF_TEAM_NAMES: Dict[str, str] = {
     "ucsb": "UC Santa Barbara",
     "2540": "UC Santa Barbara",
+    "ucsd": "UC San Diego",
+    "28": "UC San Diego",
     "ucr": "UC Riverside",
 }
 
@@ -1403,6 +1412,46 @@ def resolve_athlete_name(athlete_id: str) -> str:
     return _ATHLETE_NAME_CACHE[aid]
 
 
+def fetch_live_minutes(game_id: str) -> Dict[str, str]:
+    """Fetch the live boxscore from ESPN's Summary API and extract minutes played."""
+    url = f"https://site.api.espn.com/apis/site/v2/sports/basketball/mens-college-basketball/summary?event={game_id}"
+    minutes_map = {}
+    try:
+        payload = fetch_json(url)
+        
+        # The summary API puts player stats cleanly under boxscore -> players
+        teams_data = payload.get("boxscore", {}).get("players", [])
+        
+        for team_data in teams_data:
+            statistics = team_data.get("statistics", [])
+            if not statistics:
+                continue
+                
+            # 1. Find the index for the "MIN" column in the stat labels
+            labels = statistics[0].get("names", [])
+            min_index = -1
+            for i, label in enumerate(labels):
+                if str(label).lower() == "min":
+                    min_index = i
+                    break
+            
+            if min_index == -1:
+                continue
+            
+            # 2. Loop through the athletes and grab their minute stat using that index
+            athletes = statistics[0].get("athletes", [])
+            for a in athletes:
+                aid = str(a.get("athlete", {}).get("id", "")).strip()
+                stats = a.get("stats", [])
+                if aid and len(stats) > min_index:
+                    minutes_map[aid] = str(stats[min_index])
+                    
+    except Exception as e:
+        print(f"Warning: Failed to fetch live minutes from summary API: {e}")
+        
+    return minutes_map
+
+
 def _compute_live_player_stats(team_plays: List[Dict[str, Any]]) -> Dict[str, Dict[str, int]]:
     stats_by_athlete: Dict[str, Dict[str, int]] = {}
 
@@ -1602,7 +1651,9 @@ def _live_team_rows(team_id: str, rows: List[Dict[str, Any]]) -> List[Dict[str, 
     return out
 
 
-def _live_player_rows(team_id: str, rows: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _live_player_rows(team_id: str, rows: List[Dict[str, Any]], minutes_map: Dict[str, str] = None) -> List[Dict[str, Any]]:
+    if minutes_map is None:
+        minutes_map = {}
     """Build player-level stat rows from PBP for one team. Columns match season player table."""
     tid = normalize_team_id(team_id)
     team_plays = [r for r in rows if _normalize_team_id_safe(r.get("team_id")) == tid]
@@ -1638,7 +1689,7 @@ def _live_player_rows(team_id: str, rows: List[Dict[str, Any]]) -> List[Dict[str
             "team_id": tid,
             "Player": resolve_athlete_name(aid),
             "GP": "1",
-            "MIN": "",
+            "MIN": minutes_map.get(aid, ""),
             "PTS": str(pts),
             "REB": str(reb),
             "AST": str(ast),
@@ -1658,6 +1709,11 @@ def build_live_stats_from_pbp(
     opponent_team_id: Optional[str] = None,
     game_id: Optional[str] = None,
 ) -> Dict[str, Any]:
+    
+    gid = (game_id or ESPN_PBP_GAME_ID).strip()
+
+    minutes_map = fetch_live_minutes(gid)
+
     """Build four datasets (ucsb_team, ucsb_players, opponent_team, opponent_players) from PBP only."""
     rows = load_pbp_rows(game_id=game_id)
     ucsb_id = _normalize_team_id_safe(ucsb_team_id or DEFAULT_UCSB_TEAM_ID) or normalize_team_id(DEFAULT_UCSB_TEAM_ID)
@@ -1683,7 +1739,7 @@ def build_live_stats_from_pbp(
             rws = _live_team_rows(tid, rows)
             cols = list(LIVE_TEAM_COLUMNS)
         else:
-            rws = _live_player_rows(tid, rows)
+            rws = _live_player_rows(tid, rows, minutes_map)
             cols = list(LIVE_PLAYER_COLUMNS)
         return {"columns": cols, "rows": rws}
 
@@ -2848,6 +2904,17 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "schema_version": manifest.get("schema_version", SCHEMA_VERSION),
                     },
                 )
+            except Exception as exc:  # noqa: BLE001
+                self._send_json(500, {"error": str(exc)})
+            return
+
+        if path == '/api/gameids':
+            try:
+                games = fetch_json(f'http://sports.core.api.espn.com/v2/sports/basketball/leagues/mens-college-basketball/seasons/2026/teams/{DEFAULT_UCSB_TEAM_ID}/events?limit=50&lang=en&region=us')
+                r = []
+                for item in games['items']:
+                    r.append(re.search(r'/events/(40\d+)', item.get('$ref', 'NONONO')).group(1))
+                self._send_json(200, {"games": r})
             except Exception as exc:  # noqa: BLE001
                 self._send_json(500, {"error": str(exc)})
             return

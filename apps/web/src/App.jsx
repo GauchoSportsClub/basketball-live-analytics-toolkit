@@ -6,7 +6,7 @@ import {
   DEFAULT_PBP_ADVANCED_FILTERS,
   normalizeClockInput,
   pbpAdvancedFiltersEqual,
-  validatePbpAdvancedFilters,
+  validatePbpAdvancedFilters
 } from "./pbpFilters";
 
 function CollapseButton({ panelRef, collapsed, onCollapsedChange, title }) {
@@ -36,10 +36,8 @@ const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
 const UCSB_TEAM_ID = "2540";
 const PBP_TEAM_ID = "pbp";
-const PBP_GAME_OPTIONS = [
-  { value: "401809115", label: "401809115" },
-  { value: "401826049", label: "401826049" },
-];
+// NOTE: ONLY PDF VALID GAME IDS: 401809115 AND 401826049
+
 const HIDDEN_COLUMNS = new Set(["row_key"]);
 const TRENDS_STAT_THRESHOLDS_TEAM = [
   { stat_key: "points", value: 1.8 },
@@ -53,7 +51,7 @@ const TRENDS_STAT_THRESHOLDS_TEAM = [
   { stat_key: "steals", value: 0.18 },
   { stat_key: "blocks", value: 0.1 },
   { stat_key: "turnovers", value: 0.3 },
-  { stat_key: "fouls", value: 0.43 },
+  { stat_key: "fouls", value: 0.43 }
 ];
 
 const TRENDS_STAT_THRESHOLDS_PLAYER = [
@@ -68,7 +66,7 @@ const TRENDS_STAT_THRESHOLDS_PLAYER = [
   { stat_key: "steals", value: 0.032 },
   { stat_key: "blocks", value: 0.02 },
   { stat_key: "turnovers", value: 0.06 },
-  { stat_key: "fouls", value: 0.1 },
+  { stat_key: "fouls", value: 0.1 }
 ];
 
 const DEFAULT_TABLE_STATE = {
@@ -77,7 +75,7 @@ const DEFAULT_TABLE_STATE = {
   sortDirection: "asc",
   selectedRowKey: "",
   forcedRowKey: "",
-  highlightRowKey: "",
+  highlightRowKey: ""
 };
 
 function normalizeTeamIdInput(value) {
@@ -169,12 +167,7 @@ function normalizeTrendPeriod(periodValue) {
     .toLowerCase()
     .trim();
   if (!raw) return "2";
-  if (
-    raw.includes("1") ||
-    raw.includes("first") ||
-    raw === "1h" ||
-    raw === "1st"
-  ) {
+  if (raw.includes("1") || raw.includes("first") || raw === "1h" || raw === "1st") {
     return "1";
   }
   return "2";
@@ -204,10 +197,7 @@ function halfTimestampSeconds(row) {
 
 function formatHalfRemainingClock(elapsedSeconds) {
   const HALF_LENGTH_SECONDS = 20 * 60;
-  const safeElapsed = Math.max(
-    0,
-    Math.min(HALF_LENGTH_SECONDS, elapsedSeconds),
-  );
+  const safeElapsed = Math.max(0, Math.min(HALF_LENGTH_SECONDS, elapsedSeconds));
   const remaining = HALF_LENGTH_SECONDS - safeElapsed;
   const minutes = Math.floor(remaining / 60);
   const seconds = remaining % 60;
@@ -218,7 +208,7 @@ function deriveTrendsCheckpoint(rows) {
   const fallback = {
     currentHalf: "1",
     currentTimestamp: 10 * 60,
-    label: "1st Half 10:00",
+    label: "1st Half 10:00"
   };
   if (!Array.isArray(rows) || !rows.length) {
     return fallback;
@@ -229,21 +219,15 @@ function deriveTrendsCheckpoint(rows) {
     const currentHalf = normalizeTrendPeriod(row?.period);
     const halfRank = Number(currentHalf || 0);
     const currentTimestamp = halfTimestampSeconds(row);
-    if (
-      !latest ||
-      halfRank > latest.halfRank ||
-      (halfRank === latest.halfRank &&
-        currentTimestamp > latest.currentTimestamp)
-    ) {
+    if (!latest || halfRank > latest.halfRank || (halfRank === latest.halfRank && currentTimestamp > latest.currentTimestamp)) {
       const rawPeriod = String(row?.period || "").trim();
-      const periodLabel =
-        rawPeriod || (currentHalf === "1" ? "1st Half" : "2nd Half");
+      const periodLabel = rawPeriod || (currentHalf === "1" ? "1st Half" : "2nd Half");
       const rawClock = String(row?.clock || "").trim();
       latest = {
         halfRank,
         currentHalf,
         currentTimestamp,
-        label: `${periodLabel} ${rawClock || formatHalfRemainingClock(currentTimestamp)}`,
+        label: `${periodLabel} ${rawClock || formatHalfRemainingClock(currentTimestamp)}`
       };
     }
   }
@@ -254,7 +238,7 @@ function deriveTrendsCheckpoint(rows) {
   return {
     currentHalf: latest.currentHalf,
     currentTimestamp: latest.currentTimestamp,
-    label: latest.label,
+    label: latest.label
   };
 }
 
@@ -285,12 +269,11 @@ function buildTrendsAnalyticsTimelines(rows) {
       const total = Number(perTeamTotals[teamId][statKey] || 0) + increment;
       perTeamTotals[teamId][statKey] = total;
       if (!perTeamStats[teamId][statKey]) perTeamStats[teamId][statKey] = [];
-      const timestamp = halfTimestampSeconds(row);
       perTeamStats[teamId][statKey].push({
-        timestamp,
+        timestamp: halfTimestampSeconds(row),
         period: normalizeTrendPeriod(row.period),
         increment,
-        total,
+        total
       });
     });
   });
@@ -299,7 +282,7 @@ function buildTrendsAnalyticsTimelines(rows) {
   Object.entries(perTeamStats).forEach(([teamId, statMap]) => {
     out[teamId] = Object.entries(statMap).map(([statKey, events]) => ({
       stat_key: statKey,
-      events,
+      events
     }));
   });
   return out;
@@ -336,8 +319,7 @@ function buildTrendsPlayerAnalyticsTimelines(rows, playerNameById = {}) {
       if (!perPlayerIncrements[assistId]) {
         perPlayerIncrements[assistId] = {};
       }
-      perPlayerIncrements[assistId].assists =
-        Number(perPlayerIncrements[assistId].assists || 0) + 1;
+      perPlayerIncrements[assistId].assists = Number(perPlayerIncrements[assistId].assists || 0) + 1;
       if (teamId && !perPlayerTeam[assistId]) {
         perPlayerTeam[assistId] = teamId;
       }
@@ -352,16 +334,14 @@ function buildTrendsPlayerAnalyticsTimelines(rows, playerNameById = {}) {
       statKeys.forEach((statKey) => {
         const increment = Number(increments[statKey] || 0);
         if (increment <= 0) return;
-        const total =
-          Number(perPlayerTotals[playerId][statKey] || 0) + increment;
+        const total = Number(perPlayerTotals[playerId][statKey] || 0) + increment;
         perPlayerTotals[playerId][statKey] = total;
-        if (!perPlayerStats[playerId][statKey])
-          perPlayerStats[playerId][statKey] = [];
+        if (!perPlayerStats[playerId][statKey]) perPlayerStats[playerId][statKey] = [];
         perPlayerStats[playerId][statKey].push({
           timestamp: halfTimestampSeconds(row),
           period: normalizeTrendPeriod(row.period),
           increment,
-          total,
+          total
         });
       });
     });
@@ -374,8 +354,8 @@ function buildTrendsPlayerAnalyticsTimelines(rows, playerNameById = {}) {
       team_id: perPlayerTeam[playerId] || "",
       stats: Object.entries(statMap).map(([statKey, events]) => ({
         stat_key: statKey,
-        events,
-      })),
+        events
+      }))
     };
   });
   return out;
@@ -394,26 +374,20 @@ function buildTrendsMessages({
   overMultiplier,
   underMultiplier,
   currentHalf,
-  currentTimestamp,
+  currentTimestamp
 }) {
   const thresholdByStat = Object.fromEntries(
-    TRENDS_STAT_THRESHOLDS_TEAM.map((threshold) => [
-      threshold.stat_key,
-      threshold,
-    ]),
+    TRENDS_STAT_THRESHOLDS_TEAM.map((threshold) => [threshold.stat_key, threshold])
   );
   const thresholdByPlayerStat = Object.fromEntries(
-    TRENDS_STAT_THRESHOLDS_PLAYER.map((threshold) => [
-      threshold.stat_key,
-      threshold,
-    ]),
+    TRENDS_STAT_THRESHOLDS_PLAYER.map((threshold) => [threshold.stat_key, threshold])
   );
   const effectiveHalf = currentHalf || "1";
   const effectiveTimestamp =
     typeof currentTimestamp === "number" && currentTimestamp >= 0
       ? currentTimestamp
       : 10 * 60;
-  const MAX_WINDOW_MINUTES = Math.floor(effectiveTimestamp / 60);
+  const maxWindowMinutes = Math.floor(effectiveTimestamp / 60);
   const messages = [];
   const playerMessages = [];
 
@@ -428,32 +402,22 @@ function buildTrendsMessages({
     for (const statEntry of stats) {
       const statKey = String(statEntry.stat_key || "");
       const threshold = thresholdByStat[statKey];
-      if (!threshold) {
-        continue;
-      }
+      if (!threshold) continue;
       const nationalAverage = Number(threshold.value || 0);
-      if (nationalAverage <= 0) {
-        continue;
-      }
+      if (nationalAverage <= 0) continue;
+
       const overThreshold = nationalAverage * overMultiplier;
       const underThreshold = nationalAverage * underMultiplier;
       const events = (statEntry.events || [])
-        .filter(
-          (event) =>
-            event.period === effectiveHalf &&
-            typeof event.timestamp === "number" &&
-            event.timestamp <= effectiveTimestamp,
-        )
+        .filter((event) => event.period === effectiveHalf && typeof event.timestamp === "number" && event.timestamp <= effectiveTimestamp)
         .sort((left, right) => left.timestamp - right.timestamp);
-      if (!events.length) {
-        continue;
-      }
+      if (!events.length) continue;
 
       let bestOverMinutes = 0;
       let bestOverTotal = 0;
       let bestUnderMinutes = 0;
       let bestUnderTotal = 0;
-      for (let minutes = 3; minutes <= MAX_WINDOW_MINUTES; minutes += 1) {
+      for (let minutes = 3; minutes <= maxWindowMinutes; minutes += 1) {
         const windowStart = effectiveTimestamp - minutes * 60;
         let total = 0;
         for (const event of events) {
@@ -462,44 +426,34 @@ function buildTrendsMessages({
           }
         }
         const rate = total / minutes;
-        const isOver = rate >= overThreshold;
-        const isUnder = rate <= underThreshold;
-        if (isOver && minutes > bestOverMinutes) {
+        if (rate >= overThreshold && minutes > bestOverMinutes) {
           bestOverMinutes = minutes;
           bestOverTotal = total;
         }
-        if (isUnder && minutes > bestUnderMinutes) {
+        if (rate <= underThreshold && minutes > bestUnderMinutes) {
           bestUnderMinutes = minutes;
           bestUnderTotal = total;
         }
       }
 
       if (bestOverMinutes && bestOverTotal >= 3) {
-        if (statKey === "points") {
-          messages.push({
-            text: `${teamLabel} has scored ${bestOverTotal} points in the last ${bestOverMinutes} minutes.`,
-            tone: "good",
-          });
-        } else {
-          messages.push({
-            text: `${teamLabel} has ${bestOverTotal} ${trendsStatLabel(statKey)} in the last ${bestOverMinutes} minutes.`,
-            tone: "good",
-          });
-        }
+        messages.push({
+          text:
+            statKey === "points"
+              ? `${teamLabel} has scored ${bestOverTotal} points in the last ${bestOverMinutes} minutes.`
+              : `${teamLabel} has ${bestOverTotal} ${trendsStatLabel(statKey)} in the last ${bestOverMinutes} minutes.`,
+          tone: "good"
+        });
       }
 
       if (bestUnderMinutes) {
-        if (statKey === "points") {
-          messages.push({
-            text: `${teamLabel} has scored ${bestUnderTotal} points in the last ${bestUnderMinutes} minutes.`,
-            tone: "bad",
-          });
-        } else {
-          messages.push({
-            text: `${teamLabel} has ${bestUnderTotal} ${trendsStatLabel(statKey)} in the last ${bestUnderMinutes} minutes.`,
-            tone: "bad",
-          });
-        }
+        messages.push({
+          text:
+            statKey === "points"
+              ? `${teamLabel} has scored ${bestUnderTotal} points in the last ${bestUnderMinutes} minutes.`
+              : `${teamLabel} has ${bestUnderTotal} ${trendsStatLabel(statKey)} in the last ${bestUnderMinutes} minutes.`,
+          tone: "bad"
+        });
       }
     }
   }
@@ -517,29 +471,19 @@ function buildTrendsMessages({
     for (const statEntry of playerData.stats || []) {
       const statKey = String(statEntry.stat_key || "");
       const threshold = thresholdByPlayerStat[statKey];
-      if (!threshold) {
-        continue;
-      }
+      if (!threshold) continue;
       const nationalAverage = Number(threshold.value || 0);
-      if (nationalAverage <= 0) {
-        continue;
-      }
+      if (nationalAverage <= 0) continue;
+
       const overThreshold = nationalAverage * overMultiplier;
       const events = (statEntry.events || [])
-        .filter(
-          (event) =>
-            event.period === effectiveHalf &&
-            typeof event.timestamp === "number" &&
-            event.timestamp <= effectiveTimestamp,
-        )
+        .filter((event) => event.period === effectiveHalf && typeof event.timestamp === "number" && event.timestamp <= effectiveTimestamp)
         .sort((left, right) => left.timestamp - right.timestamp);
-      if (!events.length) {
-        continue;
-      }
+      if (!events.length) continue;
 
       let bestOverMinutes = 0;
       let bestOverTotal = 0;
-      for (let minutes = 3; minutes <= MAX_WINDOW_MINUTES; minutes += 1) {
+      for (let minutes = 3; minutes <= maxWindowMinutes; minutes += 1) {
         const windowStart = effectiveTimestamp - minutes * 60;
         let total = 0;
         for (const event of events) {
@@ -547,26 +491,20 @@ function buildTrendsMessages({
             total += Number(event.increment || 0);
           }
         }
-        const rate = total / minutes;
-        const isOver = rate >= overThreshold;
-        if (isOver && minutes > bestOverMinutes) {
+        if (total / minutes >= overThreshold && minutes > bestOverMinutes) {
           bestOverMinutes = minutes;
           bestOverTotal = total;
         }
       }
 
       if (bestOverMinutes && bestOverTotal >= 3) {
-        if (statKey === "points") {
-          playerMessages.push({
-            text: `${playerLabel} has scored ${bestOverTotal} points in the last ${bestOverMinutes} minutes.`,
-            tone: "good",
-          });
-        } else {
-          playerMessages.push({
-            text: `${playerLabel} has ${bestOverTotal} ${trendsStatLabel(statKey)} in the last ${bestOverMinutes} minutes.`,
-            tone: "good",
-          });
-        }
+        playerMessages.push({
+          text:
+            statKey === "points"
+              ? `${playerLabel} has scored ${bestOverTotal} points in the last ${bestOverMinutes} minutes.`
+              : `${playerLabel} has ${bestOverTotal} ${trendsStatLabel(statKey)} in the last ${bestOverMinutes} minutes.`,
+          tone: "good"
+        });
       }
     }
   }
@@ -576,24 +514,40 @@ function buildTrendsMessages({
 
 function buildPlayerNameMapFromLiveStats(payload) {
   const map = {};
-  const datasets = [
-    payload?.ucsb_players?.rows || [],
-    payload?.opponent_players?.rows || [],
-  ];
+  const datasets = [payload?.ucsb_players?.rows || [], payload?.opponent_players?.rows || []];
   for (const rows of datasets) {
     for (const row of rows) {
       const rowKey = String(row?.row_key || "");
       const playerName = String(row?.Player || "").trim();
       const match = rowKey.match(/_player_([A-Za-z0-9_-]+)$/);
       if (!match || !playerName) continue;
-      const athleteId = match[1];
-      map[athleteId] = playerName;
+      map[match[1]] = playerName;
     }
   }
   return map;
 }
 
-function DataTable({ columns, rows, state, onChange, extraControls = null }) {
+function getPerformanceColor(liveStats, seasonStatsPer, threshold) {
+ const stat = parseFloat(liveStats);
+  const per_game = parseFloat(seasonStatsPer);
+
+  // If data is missing or PPG is 0, don't apply color
+  if (isNaN(stat) || isNaN(per_game) || per_game === 0) {
+      return undefined;
+  }
+  
+  const diff = (stat - per_game) / per_game;
+
+  if (diff >= threshold) {
+      return "rgba(0, 255, 0, 0.2)"; 
+  } else if (diff <= -threshold) {
+      return "rgba(255, 0, 0, 0.2)"; 
+  }
+  
+  return undefined; 
+}
+
+function DataTable({ columns, rows, state, onChange, extraControls = null, getRowStyle }) {
   const rowRefs = useRef({});
 
   const sortedRows = useMemo(() => {
@@ -605,11 +559,7 @@ function DataTable({ columns, rows, state, onChange, extraControls = null }) {
       if (!filter) {
         return true;
       }
-      return columns.some((column) =>
-        String(row[column] ?? "")
-          .toLowerCase()
-          .includes(filter),
-      );
+      return columns.some((column) => String(row[column] ?? "").toLowerCase().includes(filter));
     });
 
     if (!state.sortColumn) {
@@ -667,21 +617,13 @@ function DataTable({ columns, rows, state, onChange, extraControls = null }) {
         </select>
         <button
           type="button"
-          onClick={() =>
-            onChange({
-              sortDirection: state.sortDirection === "asc" ? "desc" : "asc",
-            })
-          }
+          onClick={() => onChange({ sortDirection: state.sortDirection === "asc" ? "desc" : "asc" })}
           disabled={!state.sortColumn}
         >
           {state.sortDirection === "asc" ? "Asc" : "Desc"}
         </button>
         {state.forcedRowKey ? (
-          <button
-            type="button"
-            className="neutral"
-            onClick={() => onChange({ forcedRowKey: "", highlightRowKey: "" })}
-          >
+          <button type="button" className="neutral" onClick={() => onChange({ forcedRowKey: "", highlightRowKey: "" })}>
             Clear evidence focus
           </button>
         ) : null}
@@ -699,12 +641,9 @@ function DataTable({ columns, rows, state, onChange, extraControls = null }) {
           </thead>
           <tbody>
             {sortedRows.map((row, index) => {
-              const rowKeyValue =
-                row.row_key || `${index}_${columns[0] || "row"}`;
-              const isSelected =
-                row.row_key && row.row_key === state.selectedRowKey;
-              const isHighlighted =
-                row.row_key && row.row_key === state.highlightRowKey;
+              const rowKeyValue = row.row_key || `${index}_${columns[0] || "row"}`;
+              const isSelected = row.row_key && row.row_key === state.selectedRowKey;
+              const isHighlighted = row.row_key && row.row_key === state.highlightRowKey;
               return (
                 <tr
                   key={rowKeyValue}
@@ -714,10 +653,11 @@ function DataTable({ columns, rows, state, onChange, extraControls = null }) {
                     }
                   }}
                   className={`${isSelected ? "selected" : ""} ${isHighlighted ? "highlighted" : ""}`.trim()}
+                  style={getRowStyle ? getRowStyle(row) : {}}
                   onClick={() =>
                     onChange({
                       selectedRowKey: row.row_key || "",
-                      highlightRowKey: row.row_key || state.highlightRowKey,
+                      highlightRowKey: row.row_key || state.highlightRowKey
                     })
                   }
                 >
@@ -734,13 +674,7 @@ function DataTable({ columns, rows, state, onChange, extraControls = null }) {
   );
 }
 
-function InsightBubble({
-  insight,
-  onSave,
-  onEvidenceClick,
-  saveText,
-  resolveTeamName,
-}) {
+function InsightBubble({ insight, onSave, onEvidenceClick, saveText, resolveTeamName }) {
   return (
     <article className="bubble">
       <header>
@@ -752,12 +686,7 @@ function InsightBubble({
       <p>{insight.insight}</p>
       <div className="evidence-list">
         {(insight.evidence || []).map((ref, index) => (
-          <button
-            key={`${ref.row_key}_${index}`}
-            type="button"
-            className="evidence-chip"
-            onClick={() => onEvidenceClick(ref)}
-          >
+          <button key={`${ref.row_key}_${index}`} type="button" className="evidence-chip" onClick={() => onEvidenceClick(ref)}>
             {evidenceLabel(ref, resolveTeamName)}
           </button>
         ))}
@@ -788,56 +717,41 @@ export default function App() {
   const [teamsError, setTeamsError] = useState("");
   const [seasonPlayers, setSeasonPlayers] = useState({
     ucsb: { columns: [], rows: [] },
-    opponent: { columns: [], rows: [] },
+    opponent: { columns: [], rows: [] }
   });
-  const [seasonPlayersLoading, setSeasonPlayersLoading] = useState({
-    ucsb: false,
-    opponent: false,
-  });
-  const [seasonPlayersError, setSeasonPlayersError] = useState({
-    ucsb: "",
-    opponent: "",
-  });
+  const [seasonPlayersLoading, setSeasonPlayersLoading] = useState({ ucsb: false, opponent: false });
+  const [seasonPlayersError, setSeasonPlayersError] = useState({ ucsb: "", opponent: "" });
   const [seasonPlayersTableState, setSeasonPlayersTableState] = useState({
     ucsb: { ...DEFAULT_TABLE_STATE },
-    opponent: { ...DEFAULT_TABLE_STATE },
+    opponent: { ...DEFAULT_TABLE_STATE }
   });
 
-  const [pbpData, setPbpData] = useState({
-    columns: [],
-    rows: [],
-    team_id: PBP_TEAM_ID,
-    updated_at: "",
-    source_url: "",
-  });
+  const [pbpData, setPbpData] = useState({ columns: [], rows: [], team_id: PBP_TEAM_ID, updated_at: "", source_url: "" });
   const [pbpGameId, setPbpGameId] = useState("401809115");
-  const [pbpTableState, setPbpTableState] = useState({
-    ...DEFAULT_TABLE_STATE,
-  });
-  const [pbpAdvancedFiltersDraft, setPbpAdvancedFiltersDraft] = useState({
-    ...DEFAULT_PBP_ADVANCED_FILTERS,
-  });
-  const [pbpAppliedFilters, setPbpAppliedFilters] = useState({
-    ...DEFAULT_PBP_ADVANCED_FILTERS,
-  });
+  const [pbpGameOptions, setPbpGameOptions] = useState([]);
+  const [pbpTableState, setPbpTableState] = useState({ ...DEFAULT_TABLE_STATE });
+  const [pbpAdvancedFiltersDraft, setPbpAdvancedFiltersDraft] = useState({ ...DEFAULT_PBP_ADVANCED_FILTERS });
+  const [pbpAppliedFilters, setPbpAppliedFilters] = useState({ ...DEFAULT_PBP_ADVANCED_FILTERS });
   const [pbpAdvancedOpen, setPbpAdvancedOpen] = useState(false);
   const [pbpLoading, setPbpLoading] = useState(false);
   const [pbpUpdating, setPbpUpdating] = useState(false);
   const [pbpError, setPbpError] = useState("");
 
   const [gameDataSubtab, setGameDataSubtab] = useState("live-stats");
+  const [performanceMetric, setPerformanceMetric] = useState("PTS");
+
   const [liveStats, setLiveStats] = useState(() => ({
     ucsb_team: { columns: [], rows: [] },
     ucsb_players: { columns: [], rows: [] },
     opponent_team: { columns: [], rows: [] },
-    opponent_players: { columns: [], rows: [] },
+    opponent_players: { columns: [], rows: [] }
   }));
   const [activeLiveSide, setActiveLiveSide] = useState("ucsb");
   const [liveStatsLoading, setLiveStatsLoading] = useState(false);
   const [liveStatsError, setLiveStatsError] = useState("");
   const [livePlayersTableState, setLivePlayersTableState] = useState({
     ucsb: { ...DEFAULT_TABLE_STATE },
-    opponent: { ...DEFAULT_TABLE_STATE },
+    opponent: { ...DEFAULT_TABLE_STATE }
   });
   const [trendsUpdating, setTrendsUpdating] = useState(false);
   const [trendsError, setTrendsError] = useState("");
@@ -850,25 +764,21 @@ export default function App() {
   const [trendsUnderMultiplier, setTrendsUnderMultiplier] = useState(1);
   const [trendsCurrentHalf, setTrendsCurrentHalf] = useState("1");
   const [trendsCurrentTimestamp, setTrendsCurrentTimestamp] = useState(10 * 60);
-  const [trendsCheckpointLabel, setTrendsCheckpointLabel] =
-    useState("1st Half 10:00");
+  const [trendsCheckpointLabel, setTrendsCheckpointLabel] = useState("1st Half 10:00");
 
   const [prompt, setPrompt] = useState("");
   const [contextEnabled, setContextEnabled] = useState({
     ucsbTeam: true,
     ucsbPlayers: true,
     opponentTeam: true,
-    opponentPlayers: true,
+    opponentPlayers: true
   });
   const [insights, setInsights] = useState([]);
   const [savedInsights, setSavedInsights] = useState([]);
   const [insightLoading, setInsightLoading] = useState(false);
   const [insightError, setInsightError] = useState("");
 
-  const normalizedOpponentTeamId = useMemo(
-    () => normalizeTeamIdInput(opponentTeamId),
-    [opponentTeamId],
-  );
+  const normalizedOpponentTeamId = useMemo(() => normalizeTeamIdInput(opponentTeamId), [opponentTeamId]);
   const teamNameById = useMemo(() => {
     const map = {};
     for (const team of espnTeams) {
@@ -900,6 +810,21 @@ export default function App() {
     loadEspnTeams();
   }, [loadEspnTeams]);
 
+  const loadPbpIds = useCallback(async () => {
+    try {
+      const payload = await fetchJson(`${API_BASE}/api/gameids`, {}, 1);
+      setPbpGameOptions(
+        payload.games.map(id => ({ value: id, label: id }))
+      );
+    } catch (error) {
+      console.error("Error fetching PBP IDs:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPbpIds();
+  }, [loadPbpIds]);
+
   const loadSeasonPlayers = useCallback(async (side, teamId) => {
     const normalizedTeamId = normalizeTeamIdInput(teamId);
     if (!normalizedTeamId) {
@@ -908,23 +833,17 @@ export default function App() {
     setSeasonPlayersLoading((prev) => ({ ...prev, [side]: true }));
     setSeasonPlayersError((prev) => ({ ...prev, [side]: "" }));
     try {
-      const payload = await fetchJson(
-        `${API_BASE}/api/espn/season/${normalizedTeamId}/player`,
-        {},
-        1,
-      );
-      const safeColumns = (payload.columns || []).filter(
-        (column) => !HIDDEN_COLUMNS.has(column),
-      );
+      const payload = await fetchJson(`${API_BASE}/api/espn/season/${normalizedTeamId}/player`, {}, 1);
+      const safeColumns = (payload.columns || []).filter((column) => !HIDDEN_COLUMNS.has(column));
       setSeasonPlayers((prev) => ({
         ...prev,
-        [side]: { columns: safeColumns, rows: payload.rows || [] },
+        [side]: { columns: safeColumns, rows: payload.rows || [] }
       }));
     } catch (error) {
       setSeasonPlayersError((prev) => ({ ...prev, [side]: error.message }));
       setSeasonPlayers((prev) => ({
         ...prev,
-        [side]: { columns: [], rows: [] },
+        [side]: { columns: [], rows: [] }
       }));
     } finally {
       setSeasonPlayersLoading((prev) => ({ ...prev, [side]: false }));
@@ -939,7 +858,7 @@ export default function App() {
     if (!normalizedOpponentTeamId) {
       setSeasonPlayers((prev) => ({
         ...prev,
-        opponent: { columns: [], rows: [] },
+        opponent: { columns: [], rows: [] }
       }));
       setSeasonPlayersError((prev) => ({ ...prev, opponent: "" }));
       return;
@@ -947,40 +866,34 @@ export default function App() {
     loadSeasonPlayers("opponent", normalizedOpponentTeamId);
   }, [loadSeasonPlayers, normalizedOpponentTeamId]);
 
-  const loadPbp = useCallback(
-    async (gameId) => {
-      const gid = gameId ?? pbpGameId;
-      const clientValidationError =
-        validatePbpAdvancedFilters(pbpAppliedFilters);
-      if (clientValidationError) {
-        // Defensive: applied filters should already be valid via disabled Apply.
-        return;
-      }
-      const filterQuery = buildPbpFilterQuery(pbpAppliedFilters);
-      const url = `${API_BASE}/api/pbp?game_id=${encodeURIComponent(gid)}${filterQuery ? `&${filterQuery}` : ""}`;
-      setPbpLoading(true);
-      setPbpError("");
-      try {
-        const payload = await fetchJson(url, {}, 1);
-        const safeColumns = (payload.columns || []).filter(
-          (column) => !HIDDEN_COLUMNS.has(column),
-        );
-        setPbpData({
-          columns: safeColumns,
-          rows: payload.rows || [],
-          team_id: payload.team_id || PBP_TEAM_ID,
-          updated_at: payload.updated_at || "",
-          source_url: payload.source_url || "",
-        });
-      } catch (error) {
-        setPbpError(error.message);
-        setPbpData((prev) => ({ ...prev, columns: [], rows: [] }));
-      } finally {
-        setPbpLoading(false);
-      }
-    },
-    [pbpAppliedFilters, pbpGameId],
-  );
+  const loadPbp = useCallback(async (gameId) => {
+    const gid = gameId ?? pbpGameId;
+    const clientValidationError = validatePbpAdvancedFilters(pbpAppliedFilters);
+    if (clientValidationError) {
+      // Defensive: applied filters should already be valid via disabled Apply.
+      return;
+    }
+    const filterQuery = buildPbpFilterQuery(pbpAppliedFilters);
+    const url = `${API_BASE}/api/pbp?game_id=${encodeURIComponent(gid)}${filterQuery ? `&${filterQuery}` : ""}`;
+    setPbpLoading(true);
+    setPbpError("");
+    try {
+      const payload = await fetchJson(url, {}, 1);
+      const safeColumns = (payload.columns || []).filter((column) => !HIDDEN_COLUMNS.has(column));
+      setPbpData({
+        columns: safeColumns,
+        rows: payload.rows || [],
+        team_id: payload.team_id || PBP_TEAM_ID,
+        updated_at: payload.updated_at || "",
+        source_url: payload.source_url || ""
+      });
+    } catch (error) {
+      setPbpError(error.message);
+      setPbpData((prev) => ({ ...prev, columns: [], rows: [] }));
+    } finally {
+      setPbpLoading(false);
+    }
+  }, [pbpAppliedFilters, pbpGameId]);
 
   useEffect(() => {
     loadPbp();
@@ -990,30 +903,16 @@ export default function App() {
     setLiveStatsLoading(true);
     setLiveStatsError("");
     const ucsb = encodeURIComponent(UCSB_TEAM_ID);
-    const opponent = normalizedOpponentTeamId
-      ? encodeURIComponent(normalizedOpponentTeamId)
-      : "";
+    const opponent = normalizedOpponentTeamId ? encodeURIComponent(normalizedOpponentTeamId) : "";
     const gameId = encodeURIComponent(pbpGameId);
     const url = `${API_BASE}/api/pbp/live-stats?ucsb=${ucsb}${opponent ? `&opponent=${opponent}` : ""}&game_id=${gameId}`;
     try {
       const payload = await fetchJson(url, {}, 1);
       setLiveStats({
-        ucsb_team: {
-          columns: payload.ucsb_team?.columns || [],
-          rows: payload.ucsb_team?.rows || [],
-        },
-        ucsb_players: {
-          columns: payload.ucsb_players?.columns || [],
-          rows: payload.ucsb_players?.rows || [],
-        },
-        opponent_team: {
-          columns: payload.opponent_team?.columns || [],
-          rows: payload.opponent_team?.rows || [],
-        },
-        opponent_players: {
-          columns: payload.opponent_players?.columns || [],
-          rows: payload.opponent_players?.rows || [],
-        },
+        ucsb_team: { columns: payload.ucsb_team?.columns || [], rows: payload.ucsb_team?.rows || [] },
+        ucsb_players: { columns: payload.ucsb_players?.columns || [], rows: payload.ucsb_players?.rows || [] },
+        opponent_team: { columns: payload.opponent_team?.columns || [], rows: payload.opponent_team?.rows || [] },
+        opponent_players: { columns: payload.opponent_players?.columns || [], rows: payload.opponent_players?.rows || [] }
       });
     } catch (error) {
       setLiveStatsError(error.message);
@@ -1021,7 +920,7 @@ export default function App() {
         ucsb_team: { columns: [], rows: [] },
         ucsb_players: { columns: [], rows: [] },
         opponent_team: { columns: [], rows: [] },
-        opponent_players: { columns: [], rows: [] },
+        opponent_players: { columns: [], rows: [] }
       });
     } finally {
       setLiveStatsLoading(false);
@@ -1044,9 +943,9 @@ export default function App() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ force: true, game_id: pbpGameId }),
+          body: JSON.stringify({ force: true, game_id: pbpGameId })
         },
-        1,
+        1
       );
       await loadPbp();
     } catch (error) {
@@ -1066,29 +965,20 @@ export default function App() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ force: true, game_id: pbpGameId }),
+          body: JSON.stringify({ force: true, game_id: pbpGameId })
         },
-        1,
+        1
       );
-      const payload = await fetchJson(
-        `${API_BASE}/api/pbp?game_id=${encodeURIComponent(pbpGameId)}`,
-        {},
-        1,
-      );
-      const opponent = normalizedOpponentTeamId
-        ? `&opponent=${encodeURIComponent(normalizedOpponentTeamId)}`
-        : "";
+      const payload = await fetchJson(`${API_BASE}/api/pbp?game_id=${encodeURIComponent(pbpGameId)}`, {}, 1);
+      const opponent = normalizedOpponentTeamId ? `&opponent=${encodeURIComponent(normalizedOpponentTeamId)}` : "";
       const livePayload = await fetchJson(
         `${API_BASE}/api/pbp/live-stats?ucsb=${encodeURIComponent(UCSB_TEAM_ID)}${opponent}&game_id=${encodeURIComponent(pbpGameId)}`,
         {},
-        1,
+        1
       );
       const playerNameById = buildPlayerNameMapFromLiveStats(livePayload);
       const teamTimelines = buildTrendsAnalyticsTimelines(payload.rows || []);
-      const playerTimelines = buildTrendsPlayerAnalyticsTimelines(
-        payload.rows || [],
-        playerNameById,
-      );
+      const playerTimelines = buildTrendsPlayerAnalyticsTimelines(payload.rows || [], playerNameById);
       const checkpoint = deriveTrendsCheckpoint(payload.rows || []);
       setTrendsTimelines(teamTimelines);
       setTrendsPlayerTimelines(playerTimelines);
@@ -1102,7 +992,7 @@ export default function App() {
         overMultiplier: trendsOverMultiplier,
         underMultiplier: trendsUnderMultiplier,
         currentHalf: checkpoint.currentHalf,
-        currentTimestamp: checkpoint.currentTimestamp,
+        currentTimestamp: checkpoint.currentTimestamp
       });
       setTrendsMessages(messages);
       setTrendsPlayerMessages(playerMessages);
@@ -1116,13 +1006,7 @@ export default function App() {
     } finally {
       setTrendsUpdating(false);
     }
-  }, [
-    pbpGameId,
-    normalizedOpponentTeamId,
-    teamNameById,
-    trendsOverMultiplier,
-    trendsUnderMultiplier,
-  ]);
+  }, [pbpGameId, normalizedOpponentTeamId, teamNameById, trendsOverMultiplier, trendsUnderMultiplier]);
 
   useEffect(() => {
     const { messages, playerMessages } = buildTrendsMessages({
@@ -1132,7 +1016,7 @@ export default function App() {
       overMultiplier: trendsOverMultiplier,
       underMultiplier: trendsUnderMultiplier,
       currentHalf: trendsCurrentHalf,
-      currentTimestamp: trendsCurrentTimestamp,
+      currentTimestamp: trendsCurrentTimestamp
     });
     setTrendsMessages(messages);
     setTrendsPlayerMessages(playerMessages);
@@ -1143,7 +1027,7 @@ export default function App() {
     trendsOverMultiplier,
     trendsUnderMultiplier,
     trendsCurrentHalf,
-    trendsCurrentTimestamp,
+    trendsCurrentTimestamp
   ]);
 
   const resolveTeamName = useCallback(
@@ -1160,20 +1044,14 @@ export default function App() {
       }
       return normalized || "Team";
     },
-    [teamNameById],
+    [teamNameById]
   );
 
   const handleEvidenceClick = useCallback(
     (ref) => {
-      const target = resolveEvidenceTarget(
-        ref,
-        UCSB_TEAM_ID,
-        normalizedOpponentTeamId,
-      );
+      const target = resolveEvidenceTarget(ref, UCSB_TEAM_ID, normalizedOpponentTeamId);
       if (!target) {
-        setInsightError(
-          "Evidence target could not be resolved for the currently selected teams.",
-        );
+        setInsightError("Evidence target could not be resolved for the currently selected teams.");
         return;
       }
 
@@ -1182,15 +1060,12 @@ export default function App() {
           ...prev,
           selectedRowKey: target.rowKey,
           highlightRowKey: target.rowKey,
-          forcedRowKey: target.rowKey,
+          forcedRowKey: target.rowKey
         }));
         window.setTimeout(() => {
           setPbpTableState((prev) => ({
             ...prev,
-            highlightRowKey:
-              prev.highlightRowKey === target.rowKey
-                ? ""
-                : prev.highlightRowKey,
+            highlightRowKey: prev.highlightRowKey === target.rowKey ? "" : prev.highlightRowKey
           }));
         }, 3500);
         return;
@@ -1204,27 +1079,23 @@ export default function App() {
             ...prev[target.side],
             selectedRowKey: target.rowKey,
             highlightRowKey: target.rowKey,
-            forcedRowKey: target.rowKey,
-          },
+            forcedRowKey: target.rowKey
+          }
         }));
       }
     },
-    [normalizedOpponentTeamId],
+    [normalizedOpponentTeamId]
   );
 
   const generateInsights = useCallback(async () => {
     setInsightLoading(true);
     setInsightError("");
 
-    const contexts = [
-      { team_id: PBP_TEAM_ID, dataset: "pbp", game_id: pbpGameId },
-    ];
+    const contexts = [{ team_id: PBP_TEAM_ID, dataset: "pbp", game_id: pbpGameId }];
 
     if (!pbpData.rows.length) {
       setInsightLoading(false);
-      setInsightError(
-        "PBP data is empty. Click Update in the PBP panel first.",
-      );
+      setInsightError("PBP data is empty. Click Update in the PBP panel first.");
       return;
     }
 
@@ -1240,10 +1111,7 @@ export default function App() {
         contexts.push({ team_id: normalizedOpponentTeamId, dataset: "team" });
       }
       if (contextEnabled.opponentPlayers) {
-        contexts.push({
-          team_id: normalizedOpponentTeamId,
-          dataset: "players",
-        });
+        contexts.push({ team_id: normalizedOpponentTeamId, dataset: "players" });
       }
     }
 
@@ -1253,9 +1121,9 @@ export default function App() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt, contexts }),
+          body: JSON.stringify({ prompt, contexts })
         },
-        1,
+        1
       );
       setInsights(payload.insights || []);
     } catch (error) {
@@ -1263,39 +1131,21 @@ export default function App() {
     } finally {
       setInsightLoading(false);
     }
-  }, [
-    contextEnabled,
-    normalizedOpponentTeamId,
-    pbpData.rows.length,
-    prompt,
-    pbpGameId,
-  ]);
+  }, [contextEnabled, normalizedOpponentTeamId, pbpData.rows.length, prompt, pbpGameId]);
 
   const ucsbDisplayName = teamNameById[UCSB_TEAM_ID] || "UC Santa Barbara";
-  const opponentDisplayName =
-    teamNameById[normalizedOpponentTeamId] ||
-    normalizedOpponentTeamId ||
-    "Opponent";
-  const activeSeasonName =
-    activeSeasonSide === "ucsb" ? ucsbDisplayName : opponentDisplayName;
+  const opponentDisplayName = teamNameById[normalizedOpponentTeamId] || normalizedOpponentTeamId || "Opponent";
+  const activeSeasonName = activeSeasonSide === "ucsb" ? ucsbDisplayName : opponentDisplayName;
   const activeLivePrefix = activeLiveSide === "ucsb" ? "ucsb" : "opponent";
   const activeSeasonPlayers = seasonPlayers[activeSeasonSide];
   const activeSeasonPlayersLoading = seasonPlayersLoading[activeSeasonSide];
   const activeSeasonPlayersError = seasonPlayersError[activeSeasonSide];
-  const activeSeasonPlayersTableState =
-    seasonPlayersTableState[activeSeasonSide];
-  const livePlayersData = liveStats[`${activeLivePrefix}_players`] || {
-    columns: [],
-    rows: [],
-  };
-  const livePlayerRows =
-    liveStats[`${activeLivePrefix}_players`]?.rows?.length ?? 0;
+  const activeSeasonPlayersTableState = seasonPlayersTableState[activeSeasonSide];
+  const livePlayersData = liveStats[`${activeLivePrefix}_players`] || { columns: [], rows: [] };
+  const livePlayerRows = liveStats[`${activeLivePrefix}_players`]?.rows?.length ?? 0;
   const activeLivePlayersTableState = livePlayersTableState[activeLiveSide];
   const pbpCanApply = canApplyPbpAdvancedFilters(pbpAdvancedFiltersDraft);
-  const pbpFiltersDirty = !pbpAdvancedFiltersEqual(
-    pbpAdvancedFiltersDraft,
-    pbpAppliedFilters,
-  );
+  const pbpFiltersDirty = !pbpAdvancedFiltersEqual(pbpAdvancedFiltersDraft, pbpAppliedFilters);
   const pbpClockHint = useMemo(() => {
     if (pbpAdvancedFiltersDraft.clockMode === "last_n" && !pbpCanApply) {
       return "Enter minutes greater than 0 to apply.";
@@ -1371,185 +1221,164 @@ export default function App() {
     >
       <summary className="pbp-advanced-summary">Advanced filters</summary>
       <div className="pbp-advanced-filters">
+      <label>
+        Team
+        <select
+          className="compact-multi"
+          multiple
+          value={pbpAdvancedFiltersDraft.teamIds}
+          onChange={(event) =>
+            setPbpAdvancedFiltersDraft((prev) => ({
+              ...prev,
+              teamIds: Array.from(event.target.selectedOptions).map((option) => option.value)
+            }))
+          }
+        >
+          {pbpTeamOptions.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Type
+        <select
+          className="compact-multi"
+          multiple
+          value={pbpAdvancedFiltersDraft.types}
+          onChange={(event) =>
+            setPbpAdvancedFiltersDraft((prev) => ({
+              ...prev,
+              types: Array.from(event.target.selectedOptions).map((option) => option.value)
+            }))
+          }
+        >
+          {pbpTypeOptions.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Period
+        <select
+          className="compact-multi"
+          multiple
+          value={pbpAdvancedFiltersDraft.periods}
+          onChange={(event) =>
+            setPbpAdvancedFiltersDraft((prev) => ({
+              ...prev,
+              periods: Array.from(event.target.selectedOptions).map((option) => option.value)
+            }))
+          }
+        >
+          {pbpPeriodOptions.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="clock-filter-group">
+        <span>Clock</span>
         <label>
-          Team
-          <select
-            className="compact-multi"
-            multiple
-            value={pbpAdvancedFiltersDraft.teamIds}
-            onChange={(event) =>
+          <input
+            type="radio"
+            name="pbp-clock-mode"
+            checked={pbpAdvancedFiltersDraft.clockMode === "last_n"}
+            onChange={() =>
               setPbpAdvancedFiltersDraft((prev) => ({
                 ...prev,
-                teamIds: Array.from(event.target.selectedOptions).map(
-                  (option) => option.value,
-                ),
+                clockMode: "last_n",
+                clockFrom: "",
+                clockTo: ""
               }))
             }
-          >
-            {pbpTeamOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+          />
+          Last N minutes
         </label>
         <label>
-          Type
-          <select
-            className="compact-multi"
-            multiple
-            value={pbpAdvancedFiltersDraft.types}
-            onChange={(event) =>
+          <input
+            type="radio"
+            name="pbp-clock-mode"
+            checked={pbpAdvancedFiltersDraft.clockMode === "range"}
+            onChange={() =>
               setPbpAdvancedFiltersDraft((prev) => ({
                 ...prev,
-                types: Array.from(event.target.selectedOptions).map(
-                  (option) => option.value,
-                ),
+                clockMode: "range",
+                clockLastNMinutes: ""
               }))
             }
-          >
-            {pbpTypeOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+          />
+          Range
         </label>
         <label>
-          Period
-          <select
-            className="compact-multi"
-            multiple
-            value={pbpAdvancedFiltersDraft.periods}
-            onChange={(event) =>
+          <input
+            type="radio"
+            name="pbp-clock-mode"
+            checked={!pbpAdvancedFiltersDraft.clockMode}
+            onChange={() =>
               setPbpAdvancedFiltersDraft((prev) => ({
                 ...prev,
-                periods: Array.from(event.target.selectedOptions).map(
-                  (option) => option.value,
-                ),
+                clockMode: "",
+                clockLastNMinutes: "",
+                clockFrom: "",
+                clockTo: ""
               }))
             }
-          >
-            {pbpPeriodOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
+          />
+          Off
         </label>
-        <div className="clock-filter-group">
-          <span>Clock</span>
-          <label>
-            <input
-              type="radio"
-              name="pbp-clock-mode"
-              checked={pbpAdvancedFiltersDraft.clockMode === "last_n"}
-              onChange={() =>
-                setPbpAdvancedFiltersDraft((prev) => ({
-                  ...prev,
-                  clockMode: "last_n",
-                  clockFrom: "",
-                  clockTo: "",
-                }))
-              }
-            />
-            Last N minutes
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="pbp-clock-mode"
-              checked={pbpAdvancedFiltersDraft.clockMode === "range"}
-              onChange={() =>
-                setPbpAdvancedFiltersDraft((prev) => ({
-                  ...prev,
-                  clockMode: "range",
-                  clockLastNMinutes: "",
-                }))
-              }
-            />
-            Range
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="pbp-clock-mode"
-              checked={!pbpAdvancedFiltersDraft.clockMode}
-              onChange={() =>
-                setPbpAdvancedFiltersDraft((prev) => ({
-                  ...prev,
-                  clockMode: "",
-                  clockLastNMinutes: "",
-                  clockFrom: "",
-                  clockTo: "",
-                }))
-              }
-            />
-            Off
-          </label>
-          {pbpAdvancedFiltersDraft.clockMode === "last_n" ? (
-            <input
-              type="number"
-              min="0"
-              step="0.1"
-              required
-              value={pbpAdvancedFiltersDraft.clockLastNMinutes}
-              placeholder="Minutes (e.g., 2.5)"
-              onChange={(event) =>
-                setPbpAdvancedFiltersDraft((prev) => ({
-                  ...prev,
-                  clockLastNMinutes: event.target.value,
-                }))
-              }
-            />
-          ) : null}
-          {pbpAdvancedFiltersDraft.clockMode === "range" ? (
-            <>
-              <input
-                type="text"
-                required
-                value={pbpAdvancedFiltersDraft.clockFrom}
-                placeholder="From MM:SS"
-                onChange={(event) =>
-                  setPbpAdvancedFiltersDraft((prev) => ({
-                    ...prev,
-                    clockFrom: event.target.value,
-                  }))
-                }
-              />
-              <input
-                type="text"
-                required
-                value={pbpAdvancedFiltersDraft.clockTo}
-                placeholder="To MM:SS"
-                onChange={(event) =>
-                  setPbpAdvancedFiltersDraft((prev) => ({
-                    ...prev,
-                    clockTo: event.target.value,
-                  }))
-                }
-              />
-            </>
-          ) : null}
-        </div>
-        {pbpClockHint ? (
-          <div className="pbp-inline-hint">{pbpClockHint}</div>
+        {pbpAdvancedFiltersDraft.clockMode === "last_n" ? (
+          <input
+            type="number"
+            min="0"
+            step="0.1"
+            required
+            value={pbpAdvancedFiltersDraft.clockLastNMinutes}
+            placeholder="Minutes (e.g., 2.5)"
+            onChange={(event) =>
+              setPbpAdvancedFiltersDraft((prev) => ({ ...prev, clockLastNMinutes: event.target.value }))
+            }
+          />
         ) : null}
-        <button
-          type="button"
-          className="neutral apply-filters-btn"
-          onClick={handleApplyPbpAdvancedFilters}
-          disabled={!pbpCanApply || !pbpFiltersDirty}
-        >
-          Apply
-        </button>
-        <button
-          type="button"
-          className="neutral"
-          onClick={handleClearPbpAdvancedFilters}
-        >
-          Clear filters
-        </button>
+        {pbpAdvancedFiltersDraft.clockMode === "range" ? (
+          <>
+            <input
+              type="text"
+              required
+              value={pbpAdvancedFiltersDraft.clockFrom}
+              placeholder="From MM:SS"
+              onChange={(event) => setPbpAdvancedFiltersDraft((prev) => ({ ...prev, clockFrom: event.target.value }))}
+            />
+            <input
+              type="text"
+              required
+              value={pbpAdvancedFiltersDraft.clockTo}
+              placeholder="To MM:SS"
+              onChange={(event) => setPbpAdvancedFiltersDraft((prev) => ({ ...prev, clockTo: event.target.value }))}
+            />
+          </>
+        ) : null}
+      </div>
+      {pbpClockHint ? <div className="pbp-inline-hint">{pbpClockHint}</div> : null}
+      <button
+        type="button"
+        className="neutral apply-filters-btn"
+        onClick={handleApplyPbpAdvancedFilters}
+        disabled={!pbpCanApply || !pbpFiltersDirty}
+      >
+        Apply
+      </button>
+      <button
+        type="button"
+        className="neutral"
+        onClick={handleClearPbpAdvancedFilters}
+      >
+        Clear filters
+      </button>
       </div>
     </details>
   );
@@ -1559,7 +1388,7 @@ export default function App() {
       <PanelGroup direction="horizontal">
         <Panel
           ref={seasonDataPanelRef}
-          defaultSize={25}
+          defaultSize={33.33}
           minSize={22}
           collapsible
           collapsedSize={4}
@@ -1568,110 +1397,83 @@ export default function App() {
         >
           <div className="panel data-panel">
             {seasonDataCollapsed ? (
-              <div
-                className="panel-collapsed"
-                onClick={() => seasonDataPanelRef.current?.expand()}
-              >
+              <div className="panel-collapsed" onClick={() => seasonDataPanelRef.current?.expand()}>
                 <span>Season Data</span>
               </div>
             ) : (
               <>
-                <div className="section-header">
-                  <h2>Season Data</h2>
-                  <span>Viewing: {activeSeasonName}</span>
-                  <CollapseButton
-                    panelRef={seasonDataPanelRef}
-                    collapsed={seasonDataCollapsed}
-                    onCollapsedChange={setSeasonDataCollapsed}
-                    title="Season Data"
-                  />
-                </div>
+            <div className="section-header">
+              <h2>Season Data</h2>
+              <span>Viewing: {activeSeasonName}</span>
+              <CollapseButton
+                panelRef={seasonDataPanelRef}
+                collapsed={seasonDataCollapsed}
+                onCollapsedChange={setSeasonDataCollapsed}
+                title="Season Data"
+              />
+            </div>
 
-                <div className="tab-tree">
-                  <div className="branch">
-                    <h3>Team View</h3>
-                    <div className="leaf-list">
-                      <button
-                        type="button"
-                        className={`leaf ${activeSeasonSide === "ucsb" ? "active" : ""}`}
-                        onClick={() => setActiveSeasonSide("ucsb")}
-                      >
-                        UCSB
-                      </button>
-                      <button
-                        type="button"
-                        className={`leaf ${activeSeasonSide === "opponent" ? "active" : ""}`}
-                        onClick={() => setActiveSeasonSide("opponent")}
-                        disabled={!normalizedOpponentTeamId}
-                      >
-                        Opponent
-                      </button>
-                    </div>
-                    <div className="team-line opponent-line">
-                      {espnTeams.length > 0 ? (
-                        <select
-                          value={normalizedOpponentTeamId}
-                          onChange={(event) =>
-                            setOpponentTeamId(event.target.value)
-                          }
-                        >
-                          <option value="">Select ESPN team</option>
-                          {espnTeams
-                            .filter(
-                              (team) =>
-                                normalizeTeamIdInput(team.team_id) !==
-                                UCSB_TEAM_ID,
-                            )
-                            .map((team) => (
-                              <option key={team.team_id} value={team.team_id}>
-                                {team.school_name} ({team.team_id})
-                              </option>
-                            ))}
-                        </select>
-                      ) : (
-                        <input
-                          type="text"
-                          value={opponentTeamId}
-                          placeholder="Team ID (e.g., ucr)"
-                          onChange={(event) =>
-                            setOpponentTeamId(event.target.value)
-                          }
-                        />
-                      )}
-                    </div>
-                  </div>
+            <div className="tab-tree">
+              <div className="branch">
+                <h3>Team View</h3>
+                <div className="leaf-list">
+                  <button type="button" className={`leaf ${activeSeasonSide === "ucsb" ? "active" : ""}`} onClick={() => setActiveSeasonSide("ucsb")}>
+                    UCSB
+                  </button>
+                  <button
+                    type="button"
+                    className={`leaf ${activeSeasonSide === "opponent" ? "active" : ""}`}
+                    onClick={() => setActiveSeasonSide("opponent")}
+                    disabled={!normalizedOpponentTeamId}
+                  >
+                    Opponent
+                  </button>
                 </div>
+                <div className="team-line opponent-line">
+                  {espnTeams.length > 0 ? (
+                    <select value={normalizedOpponentTeamId} onChange={(event) => setOpponentTeamId(event.target.value)}>
+                      <option value="">Select ESPN team</option>
+                      {espnTeams
+                        .filter((team) => normalizeTeamIdInput(team.team_id) !== UCSB_TEAM_ID)
+                        .map((team) => (
+                          <option key={team.team_id} value={team.team_id}>
+                            {team.school_name} ({team.team_id})
+                          </option>
+                        ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={opponentTeamId}
+                      placeholder="Team ID (e.g., ucr)"
+                      onChange={(event) => setOpponentTeamId(event.target.value)}
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
 
-                <div className="table-status">
-                  {activeSeasonPlayersLoading ? (
-                    <span> Loading season players...</span>
-                  ) : null}
-                  {activeSeasonPlayersError ? (
-                    <span className="error"> {activeSeasonPlayersError}</span>
-                  ) : null}
-                  {teamsLoading ? <span> Loading ESPN teams...</span> : null}
-                  {teamsError ? (
-                    <span className="error"> {teamsError}</span>
-                  ) : null}
-                  {activeSeasonSide === "opponent" &&
-                  !normalizedOpponentTeamId ? (
-                    <span> Select an opponent team to view opponent data.</span>
-                  ) : null}
-                </div>
-                <DataTable
-                  columns={activeSeasonPlayers.columns}
-                  rows={activeSeasonPlayers.rows}
-                  state={activeSeasonPlayersTableState}
-                  onChange={(patch) =>
-                    setSeasonPlayersTableState((prev) => ({
-                      ...prev,
-                      [activeSeasonSide]: {
-                        ...prev[activeSeasonSide],
-                        ...patch,
-                      },
-                    }))
+            <div className="table-status">
+              {activeSeasonPlayersLoading ? <span> Loading season players...</span> : null}
+              {activeSeasonPlayersError ? <span className="error"> {activeSeasonPlayersError}</span> : null}
+              {teamsLoading ? <span> Loading ESPN teams...</span> : null}
+              {teamsError ? <span className="error"> {teamsError}</span> : null}
+              {activeSeasonSide === "opponent" && !normalizedOpponentTeamId ? <span> Select an opponent team to view opponent data.</span> : null}
+            </div>
+            <DataTable
+              columns={activeSeasonPlayers.columns}
+              rows={activeSeasonPlayers.rows}
+              state={activeSeasonPlayersTableState}
+              onChange={(patch) =>
+                setSeasonPlayersTableState((prev) => ({
+                  ...prev,
+                  [activeSeasonSide]: {
+                    ...prev[activeSeasonSide],
+                    ...patch
                   }
-                />
+                }))
+              }
+            />
               </>
             )}
           </div>
@@ -1681,7 +1483,7 @@ export default function App() {
 
         <Panel
           ref={gameDataPanelRef}
-          defaultSize={25}
+          defaultSize={33.33}
           minSize={22}
           collapsible
           collapsedSize={4}
@@ -1690,171 +1492,208 @@ export default function App() {
         >
           <div className="panel game-data-panel">
             {gameDataCollapsed ? (
-              <div
-                className="panel-collapsed"
-                onClick={() => gameDataPanelRef.current?.expand()}
-              >
+              <div className="panel-collapsed" onClick={() => gameDataPanelRef.current?.expand()}>
                 <span>Game Data</span>
               </div>
             ) : (
               <>
-                <div className="section-header">
-                  <h2>Game Data</h2>
-                  <div className="game-data-subtabs">
-                    <button
-                      type="button"
-                      className={
-                        gameDataSubtab === "live-stats" ? "active" : ""
-                      }
-                      onClick={() => setGameDataSubtab("live-stats")}
-                    >
-                      Live Stats
-                    </button>
-                    <button
-                      type="button"
-                      className={gameDataSubtab === "pbp" ? "active" : ""}
-                      onClick={() => setGameDataSubtab("pbp")}
-                    >
-                      Play-by-Play
-                    </button>
-                  </div>
-                  <div className="panel-header-actions">
-                    <label>
-                      <span className="label-inline">Game ID:</span>
-                      <select
-                        value={pbpGameId}
-                        onChange={(e) => setPbpGameId(e.target.value)}
-                        disabled={pbpUpdating}
-                      >
-                        {PBP_GAME_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <button
-                      type="button"
-                      onClick={updatePbp}
-                      disabled={pbpUpdating}
-                    >
-                      {pbpUpdating ? "Updating..." : "Update"}
-                    </button>
-                    <span>
-                      {pbpData.updated_at
-                        ? `Updated ${new Date(pbpData.updated_at).toLocaleString()}`
-                        : "No saved PBP yet"}
-                    </span>
-                  </div>
-                  <CollapseButton
-                    panelRef={gameDataPanelRef}
-                    collapsed={gameDataCollapsed}
-                    onCollapsedChange={setGameDataCollapsed}
-                    title="Game Data"
-                  />
-                </div>
+            <div className="section-header">
+              <h2>Game Data</h2>
+              <div className="game-data-subtabs">
+                <button
+                  type="button"
+                  className={gameDataSubtab === "live-stats" ? "active" : ""}
+                  onClick={() => setGameDataSubtab("live-stats")}
+                >
+                  Live Stats
+                </button>
+                <button
+                  type="button"
+                  className={gameDataSubtab === "pbp" ? "active" : ""}
+                  onClick={() => setGameDataSubtab("pbp")}
+                >
+                  Play-by-Play
+                </button>
+              </div>
+              <div className="panel-header-actions">
+                <label>
+                  <span className="label-inline">Game ID:</span>
+                  <select
+                    value={pbpGameId}
+                    onChange={(e) => setPbpGameId(e.target.value)}
+                    disabled={pbpUpdating}
+                  >
+                    {pbpGameOptions.map((opt) => (
+                      <option key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button type="button" onClick={updatePbp} disabled={pbpUpdating}>
+                  {pbpUpdating ? "Updating..." : "Update"}
+                </button>
+                <span>{pbpData.updated_at ? `Updated ${new Date(pbpData.updated_at).toLocaleString()}` : "No saved PBP yet"}</span>
+              </div>
+              <CollapseButton
+                panelRef={gameDataPanelRef}
+                collapsed={gameDataCollapsed}
+                onCollapsedChange={setGameDataCollapsed}
+                title="Game Data"
+              />
+            </div>
 
-                {gameDataSubtab === "live-stats" ? (
-                  <>
-                    <div className="tab-tree live-stats-tree">
-                      <div className="branch">
-                        <h3>Team View</h3>
-                        <div className="leaf-list">
-                          <button
-                            type="button"
-                            className={`leaf ${activeLiveSide === "ucsb" ? "active" : ""}`}
-                            onClick={() => setActiveLiveSide("ucsb")}
-                          >
-                            UCSB
-                          </button>
-                          <button
-                            type="button"
-                            className={`leaf ${activeLiveSide === "opponent" ? "active" : ""}`}
-                            onClick={() => setActiveLiveSide("opponent")}
-                            disabled={!normalizedOpponentTeamId}
-                          >
-                            Opponent
-                          </button>
-                        </div>
-                      </div>
+            {gameDataSubtab === "live-stats" ? (
+              <>
+                <div className="tab-tree live-stats-tree">
+                  <div className="branch">
+                    <h3>Team View</h3>
+                    <div className="leaf-list">
+                      <button type="button" className={`leaf ${activeLiveSide === "ucsb" ? "active" : ""}`} onClick={() => setActiveLiveSide("ucsb")}>
+                        UCSB
+                      </button>
+                      <button
+                        type="button"
+                        className={`leaf ${activeLiveSide === "opponent" ? "active" : ""}`}
+                        onClick={() => setActiveLiveSide("opponent")}
+                        disabled={!normalizedOpponentTeamId}
+                      >
+                        Opponent
+                      </button>
                     </div>
-                    <div className="table-status">
-                      {liveStatsLoading ? (
-                        <span> Loading live stats...</span>
-                      ) : null}
-                      {liveStatsError ? (
-                        <span className="error"> {liveStatsError}</span>
-                      ) : null}
-                      {!pbpData.rows.length ? (
-                        <span>
-                          {" "}
-                          Live stats are derived from play-by-play data. Click
-                          Update above to fetch PBP first.
-                        </span>
-                      ) : (
-                        <span>
-                          {" "}
-                          Derived from play-by-play ({pbpData.rows.length}{" "}
-                          plays).
-                        </span>
-                      )}
-                    </div>
-                    <div className="table-status">
-                      <span>
-                        {activeLiveSide === "ucsb" ? "UCSB" : "Opponent"} live
-                        player rows: {livePlayerRows}
-                      </span>
-                    </div>
-                    <DataTable
-                      columns={livePlayersData.columns}
-                      rows={livePlayersData.rows}
-                      state={activeLivePlayersTableState}
-                      onChange={(patch) =>
-                        setLivePlayersTableState((prev) => ({
-                          ...prev,
-                          [activeLiveSide]: {
-                            ...prev[activeLiveSide],
-                            ...patch,
-                          },
-                        }))
+                  </div>
+                </div>
+                <div className="table-status">
+                  {liveStatsLoading ? <span> Loading live stats...</span> : null}
+                  {liveStatsError ? <span className="error"> {liveStatsError}</span> : null}
+                  {!pbpData.rows.length ? (
+                    <span> Live stats are derived from play-by-play data. Click Update above to fetch PBP first.</span>
+                  ) : (
+                    <span> Derived from play-by-play ({pbpData.rows.length} plays).</span>
+                  )}
+                </div>
+                <div className="table-status">
+                  <span>
+                    {activeLiveSide === "ucsb" ? "UCSB" : "Opponent"} live player rows: {livePlayerRows}
+                  </span>
+                  <span style={{ marginLeft: "20px", marginRight: "10px" }}>
+                    Highlight Performance:
+                  </span>
+                  <select 
+                    value={performanceMetric} 
+                    onChange={(e) => setPerformanceMetric(e.target.value)}
+                    style={{ padding: "4px", borderRadius: "4px" }}
+                  >
+                    <option value="PTS">Points (PTS)</option>
+                    <option value="REB">Rebounds (REB)</option>
+                    <option value="AST">Assists (AST)</option>
+                  </select>
+                </div>
+                <DataTable
+                  columns={livePlayersData.columns}
+                  rows={livePlayersData.rows}
+                  state={activeLivePlayersTableState}
+                  onChange={(patch) =>
+                    setLivePlayersTableState((prev) => ({
+                      ...prev,
+                      [activeLiveSide]: {
+                        ...prev[activeLiveSide],
+                        ...patch
                       }
-                    />
-                  </>
-                ) : (
-                  <>
-                    <div className="table-status">
-                      {pbpLoading ? <span> Loading PBP...</span> : null}
-                      {pbpError ? (
-                        <span className="error"> {pbpError}</span>
-                      ) : null}
-                      {!pbpLoading && !pbpError && pbpData.rows.length ? (
-                        <span> Rows: {pbpData.rows.length}</span>
-                      ) : null}
-                      {!pbpLoading && !pbpError && pbpData.source_url ? (
-                        <span>
-                          {" "}
-                          Source:{" "}
-                          <a
-                            href={pbpData.source_url}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            ESPN Core API
-                          </a>
-                        </span>
-                      ) : null}
-                    </div>
-                    <DataTable
-                      columns={pbpData.columns}
-                      rows={pbpData.rows}
-                      state={pbpTableState}
-                      onChange={(patch) =>
-                        setPbpTableState((prev) => ({ ...prev, ...patch }))
+                    }))
+                  }
+                  getRowStyle={(row) => {
+                    try {
+                      const playerName = row["Player"];
+                      if (!playerName) return {};
+
+                      const seasonTeamRows = seasonPlayers[activeLiveSide].rows;
+                      const seasonPlayer = seasonTeamRows.find((p) => {
+                        const seasonName = p["Player"]; 
+                        if (!seasonName) return false;
+                        
+                        if (seasonName.includes(",")) {
+                            const [lastName, firstName] = seasonName.split(",").map(s => s.trim());
+                            const flippedName = `${firstName} ${lastName}`; 
+                            return flippedName === playerName;
+                        }
+                        
+                        return seasonName === playerName;
+                      });
+
+                      const statMapping = {
+                        "PTS": "PPG",
+                        "REB": "RPG",
+                        "AST": "APG"
+                      };
+
+                      const seasonStatsKey = statMapping[performanceMetric];
+
+                      if (seasonPlayer && seasonPlayer[seasonStatsKey]) {
+
+                        const liveValue = parseFloat(row[performanceMetric]) || 0;
+                        const liveMin = parseFloat(row["MIN"]) || 0; 
+                        const seasonAvgValue = parseFloat(seasonPlayer[seasonStatsKey]);
+
+                        const seasonTotalMin = parseFloat(seasonPlayer["MIN"]) || 0;
+                        const gpString = seasonPlayer["GP-GS"] || "";
+                        const gp = parseFloat(gpString.split("-")[0]) || 0; // Grabs the first number before the dash
+                        const seasonMpg = gp > 0 ? seasonTotalMin / gp : 0;                       
+                        
+                        // check if theyve played
+                        if (liveMin > 0 && seasonMpg > 0) {
+                          
+                          const projectedVal = (liveValue / liveMin) * seasonMpg;
+                          
+                          let threshold = .25;
+                          if (performanceMetric === "REB") {
+                            threshold = .35; 
+                          } else if (performanceMetric === "AST") {
+                            threshold = .35
+                          }
+                          
+                          const color = getPerformanceColor(projectedVal, seasonAvgValue, threshold);
+                          
+                          if (color) {
+                            return { backgroundColor: color };
+                          }
+                        }
                       }
-                      extraControls={pbpAdvancedControls}
-                    />
-                  </>
-                )}
+                    } catch (error) {
+                      console.error("Cant change color", error);
+                    }
+                    
+                    return {};
+                  }}
+
+                  
+                />
+              </>
+            ) : (
+              <>
+                <div className="table-status">
+                  {pbpLoading ? <span> Loading PBP...</span> : null}
+                  {pbpError ? <span className="error"> {pbpError}</span> : null}
+                  {!pbpLoading && !pbpError && pbpData.rows.length ? <span> Rows: {pbpData.rows.length}</span> : null}
+                  {!pbpLoading && !pbpError && pbpData.source_url ? (
+                    <span>
+                      {" "}
+                      Source:{" "}
+                      <a href={pbpData.source_url} target="_blank" rel="noreferrer">
+                        ESPN Core API
+                      </a>
+                    </span>
+                  ) : null}
+                </div>
+                <DataTable
+                  columns={pbpData.columns}
+                  rows={pbpData.rows}
+                  state={pbpTableState}
+                  onChange={(patch) => setPbpTableState((prev) => ({ ...prev, ...patch }))}
+                  extraControls={pbpAdvancedControls}
+                />
+              </>
+            )}
               </>
             )}
           </div>
@@ -1873,10 +1712,7 @@ export default function App() {
         >
           <div className="panel trends-panel">
             {trendsCollapsed ? (
-              <div
-                className="panel-collapsed"
-                onClick={() => trendsPanelRef.current?.expand()}
-              >
+              <div className="panel-collapsed" onClick={() => trendsPanelRef.current?.expand()}>
                 <span>Trends</span>
               </div>
             ) : (
@@ -1892,24 +1728,11 @@ export default function App() {
                   />
                 </div>
                 <div className="table-status">
-                  <button
-                    type="button"
-                    onClick={updateTrends}
-                    disabled={trendsUpdating}
-                  >
+                  <button type="button" onClick={updateTrends} disabled={trendsUpdating}>
                     {trendsUpdating ? "Updating..." : "Update Trends"}
                   </button>
-                  {trendsUpdatedAt ? (
-                    <span>
-                      {" "}
-                      Updated {new Date(trendsUpdatedAt).toLocaleString()}
-                    </span>
-                  ) : (
-                    <span> No trends snapshot yet.</span>
-                  )}
-                  {trendsError ? (
-                    <span className="error"> {trendsError}</span>
-                  ) : null}
+                  {trendsUpdatedAt ? <span> Updated {new Date(trendsUpdatedAt).toLocaleString()}</span> : <span> No trends snapshot yet.</span>}
+                  {trendsError ? <span className="error"> {trendsError}</span> : null}
                 </div>
                 <div className="table-status trends-threshold-controls">
                   <label>
@@ -1920,9 +1743,7 @@ export default function App() {
                       max="5"
                       step="0.05"
                       value={trendsOverMultiplier}
-                      onChange={(event) =>
-                        setTrendsOverMultiplier(Number(event.target.value))
-                      }
+                      onChange={(event) => setTrendsOverMultiplier(Number(event.target.value))}
                     />
                     <span>x{trendsOverMultiplier.toFixed(2)}</span>
                   </label>
@@ -1934,9 +1755,7 @@ export default function App() {
                       max="1"
                       step="0.05"
                       value={trendsUnderMultiplier}
-                      onChange={(event) =>
-                        setTrendsUnderMultiplier(Number(event.target.value))
-                      }
+                      onChange={(event) => setTrendsUnderMultiplier(Number(event.target.value))}
                     />
                     <span>x{trendsUnderMultiplier.toFixed(2)}</span>
                   </label>
@@ -1945,18 +1764,10 @@ export default function App() {
                   <span>Checkpoint: {trendsCheckpointLabel}</span>
                 </div>
                 <div className="table-status">
-                  <span>
-                    Tracked teams: {Object.keys(trendsTimelines).length}
-                  </span>
+                  <span>Tracked teams: {Object.keys(trendsTimelines).length}</span>
                 </div>
                 <div className="table-status">
-                  {trendsMessages.length ? (
-                    <span>Messages: {trendsMessages.length}</span>
-                  ) : (
-                    <span>
-                      No over/under messages at the current checkpoint.
-                    </span>
-                  )}
+                  {trendsMessages.length ? <span>Messages: {trendsMessages.length}</span> : <span>No over/under messages at the current checkpoint.</span>}
                 </div>
                 <div className="table-scroll">
                   {trendsMessages.length ? (
@@ -1965,18 +1776,12 @@ export default function App() {
                         <li
                           key={`trend_message_${index}`}
                           style={{
-                            backgroundColor:
-                              message.tone === "good"
-                                ? "rgba(34, 197, 94, 0.18)"
-                                : "rgba(239, 68, 68, 0.18)",
-                            border:
-                              message.tone === "good"
-                                ? "1px solid rgba(34, 197, 94, 0.5)"
-                                : "1px solid rgba(239, 68, 68, 0.5)",
+                            backgroundColor: message.tone === "good" ? "rgba(34, 197, 94, 0.18)" : "rgba(239, 68, 68, 0.18)",
+                            border: message.tone === "good" ? "1px solid rgba(34, 197, 94, 0.5)" : "1px solid rgba(239, 68, 68, 0.5)",
                             borderRadius: "0",
                             padding: "8px 10px",
                             marginBottom: "0",
-                            fontSize: "12px",
+                            fontSize: "12px"
                           }}
                         >
                           {message.text}
@@ -1992,18 +1797,12 @@ export default function App() {
                         <li
                           key={`trend_player_message_${index}`}
                           style={{
-                            backgroundColor:
-                              message.tone === "good"
-                                ? "rgba(34, 197, 94, 0.18)"
-                                : "rgba(239, 68, 68, 0.18)",
-                            border:
-                              message.tone === "good"
-                                ? "1px solid rgba(34, 197, 94, 0.5)"
-                                : "1px solid rgba(239, 68, 68, 0.5)",
+                            backgroundColor: message.tone === "good" ? "rgba(34, 197, 94, 0.18)" : "rgba(239, 68, 68, 0.18)",
+                            border: message.tone === "good" ? "1px solid rgba(34, 197, 94, 0.5)" : "1px solid rgba(239, 68, 68, 0.5)",
                             borderRadius: "0",
                             padding: "8px 10px",
                             marginBottom: "0",
-                            fontSize: "12px",
+                            fontSize: "12px"
                           }}
                         >
                           {message.text}
@@ -2023,7 +1822,7 @@ export default function App() {
 
         <Panel
           ref={insightsColumnRef}
-          defaultSize={30}
+          defaultSize={33.33}
           minSize={22}
           collapsible
           collapsedSize={4}
@@ -2031,193 +1830,137 @@ export default function App() {
           onExpand={() => setInsightsColumnCollapsed(false)}
         >
           {insightsColumnCollapsed ? (
-            <div
-              className="panel-collapsed"
-              onClick={() => insightsColumnRef.current?.expand()}
-            >
+            <div className="panel-collapsed" onClick={() => insightsColumnRef.current?.expand()}>
               <span>Insights</span>
             </div>
           ) : (
-            <div className="insights-column">
-              <div className="insights-column-header">
-                <span>Insights</span>
-                <CollapseButton
-                  panelRef={insightsColumnRef}
-                  collapsed={insightsColumnCollapsed}
-                  onCollapsedChange={setInsightsColumnCollapsed}
-                  title="Insights"
-                />
-              </div>
-              <PanelGroup direction="vertical" className="insights-panel-group">
-                <Panel
-                  ref={promptPanelRef}
-                  defaultSize={68}
-                  minSize={36}
-                  collapsible
-                  collapsedSize={4}
-                  onCollapse={() => setPromptCollapsed(true)}
-                  onExpand={() => setPromptCollapsed(false)}
-                >
-                  <div className="panel prompt-panel">
-                    {promptCollapsed ? (
-                      <div
-                        className="panel-collapsed"
-                        onClick={() => promptPanelRef.current?.expand()}
-                      >
-                        <span>Prompt + Insights</span>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="section-header">
-                          <h2>Prompt + Insights</h2>
-                          <span>Structured output with evidence refs</span>
-                          <CollapseButton
-                            panelRef={promptPanelRef}
-                            collapsed={promptCollapsed}
-                            onCollapsedChange={setPromptCollapsed}
-                            title="Prompt + Insights"
-                          />
-                        </div>
-
-                        <textarea
-                          value={prompt}
-                          onChange={(event) => setPrompt(event.target.value)}
-                          placeholder="Enter Prompt"
-                        />
-
-                        <div className="prompt-actions">
-                          <button
-                            type="button"
-                            onClick={generateInsights}
-                            disabled={insightLoading || !prompt.trim()}
-                          >
-                            {insightLoading ? "Submitting..." : "Submit"}
-                          </button>
-                          {insightError ? (
-                            <span className="error">{insightError}</span>
-                          ) : null}
-                        </div>
-
-                        <p className="prompt-note">
-                          Full PBP table is always included as primary context.
-                        </p>
-
-                        <div className="context-buttons">
-                          <button
-                            type="button"
-                            className={contextEnabled.ucsbTeam ? "active" : ""}
-                            onClick={() =>
-                              setContextEnabled((prev) => ({
-                                ...prev,
-                                ucsbTeam: !prev.ucsbTeam,
-                                ucsbPlayers: !prev.ucsbTeam,
-                              }))
-                            }
-                          >
-                            Include UCSB Season Data
-                          </button>
-                          <button
-                            type="button"
-                            className={
-                              contextEnabled.opponentTeam ? "active" : ""
-                            }
-                            onClick={() =>
-                              setContextEnabled((prev) => ({
-                                ...prev,
-                                opponentTeam: !prev.opponentTeam,
-                                opponentPlayers: !prev.opponentTeam,
-                              }))
-                            }
-                            disabled={!normalizedOpponentTeamId}
-                          >
-                            Include Opponent Season Data
-                          </button>
-                        </div>
-
-                        <div className="bubbles">
-                          {insights.length === 0 ? (
-                            <p className="placeholder">
-                              Generated insights will appear here.
-                            </p>
-                          ) : null}
-                          {insights.map((insight, index) => (
-                            <InsightBubble
-                              key={`insight_${index}`}
-                              insight={insight}
-                              onEvidenceClick={handleEvidenceClick}
-                              onSave={() =>
-                                setSavedInsights((prev) => [...prev, insight])
-                              }
-                              saveText="Save"
-                              resolveTeamName={resolveTeamName}
-                            />
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </Panel>
-
-                <PanelResizeHandle className="resize-handle horizontal" />
-
-                <Panel
-                  ref={savedPanelRef}
-                  defaultSize={32}
-                  minSize={20}
-                  collapsible
-                  collapsedSize={4}
-                  onCollapse={() => setSavedCollapsed(true)}
-                  onExpand={() => setSavedCollapsed(false)}
-                >
-                  <div className="panel saved-panel">
-                    {savedCollapsed ? (
-                      <div
-                        className="panel-collapsed"
-                        onClick={() => savedPanelRef.current?.expand()}
-                      >
-                        <span>Saved Insights</span>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="section-header">
-                          <h2>Saved Insights</h2>
-                          <span>{savedInsights.length} saved</span>
-                          <CollapseButton
-                            panelRef={savedPanelRef}
-                            collapsed={savedCollapsed}
-                            onCollapsedChange={setSavedCollapsed}
-                            title="Saved Insights"
-                          />
-                        </div>
-                        <div className="bubbles">
-                          {savedInsights.length === 0 ? (
-                            <p className="placeholder">
-                              Saved insights are global and in-memory only.
-                            </p>
-                          ) : null}
-                          {savedInsights.map((insight, index) => (
-                            <InsightBubble
-                              key={`saved_${index}`}
-                              insight={insight}
-                              onEvidenceClick={handleEvidenceClick}
-                              onSave={() =>
-                                setSavedInsights((prev) =>
-                                  prev.filter(
-                                    (_, savedIndex) => savedIndex !== index,
-                                  ),
-                                )
-                              }
-                              saveText="Remove"
-                              resolveTeamName={resolveTeamName}
-                            />
-                          ))}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                </Panel>
-              </PanelGroup>
+          <div className="insights-column">
+            <div className="insights-column-header">
+              <span>Insights</span>
+              <CollapseButton
+                panelRef={insightsColumnRef}
+                collapsed={insightsColumnCollapsed}
+                onCollapsedChange={setInsightsColumnCollapsed}
+                title="Insights"
+              />
             </div>
+            <PanelGroup direction="vertical" className="insights-panel-group">
+            <Panel
+              ref={promptPanelRef}
+              defaultSize={68}
+              minSize={36}
+              collapsible
+              collapsedSize={4}
+              onCollapse={() => setPromptCollapsed(true)}
+              onExpand={() => setPromptCollapsed(false)}
+            >
+              <div className="panel prompt-panel">
+                {promptCollapsed ? (
+                  <div className="panel-collapsed" onClick={() => promptPanelRef.current?.expand()}>
+                    <span>Prompt + Insights</span>
+                  </div>
+                ) : (
+                  <>
+                <div className="section-header">
+                  <h2>Prompt + Insights</h2>
+                  <span>Structured output with evidence refs</span>
+                  <CollapseButton
+                    panelRef={promptPanelRef}
+                    collapsed={promptCollapsed}
+                    onCollapsedChange={setPromptCollapsed}
+                    title="Prompt + Insights"
+                  />
+                </div>
+
+                <textarea
+                  value={prompt}
+                  onChange={(event) => setPrompt(event.target.value)}
+                  placeholder="Enter Prompt"
+                />
+
+                <div className="prompt-actions">
+                  <button type="button" onClick={generateInsights} disabled={insightLoading || !prompt.trim()}>
+                    {insightLoading ? "Submitting..." : "Submit"}
+                  </button>
+                  {insightError ? <span className="error">{insightError}</span> : null}
+                </div>
+
+                <p className="prompt-note">Full PBP table is always included as primary context.</p>
+
+                <div className="context-buttons">
+                  <button type="button" className={contextEnabled.ucsbTeam ? "active" : ""} onClick={() => setContextEnabled((prev) => ({ ...prev, ucsbTeam: !prev.ucsbTeam, ucsbPlayers: !prev.ucsbTeam }))}>
+                    Include UCSB Season Data
+                  </button>
+                  <button type="button" className={contextEnabled.opponentTeam ? "active" : ""} onClick={() => setContextEnabled((prev) => ({ ...prev, opponentTeam: !prev.opponentTeam, opponentPlayers: !prev.opponentTeam }))} disabled={!normalizedOpponentTeamId}>
+                    Include Opponent Season Data
+                  </button>
+                </div>
+
+                <div className="bubbles">
+                  {insights.length === 0 ? <p className="placeholder">Generated insights will appear here.</p> : null}
+                  {insights.map((insight, index) => (
+                    <InsightBubble
+                      key={`insight_${index}`}
+                      insight={insight}
+                      onEvidenceClick={handleEvidenceClick}
+                      onSave={() => setSavedInsights((prev) => [...prev, insight])}
+                      saveText="Save"
+                      resolveTeamName={resolveTeamName}
+                    />
+                  ))}
+                </div>
+                  </>
+                )}
+              </div>
+            </Panel>
+
+            <PanelResizeHandle className="resize-handle horizontal" />
+
+            <Panel
+              ref={savedPanelRef}
+              defaultSize={32}
+              minSize={20}
+              collapsible
+              collapsedSize={4}
+              onCollapse={() => setSavedCollapsed(true)}
+              onExpand={() => setSavedCollapsed(false)}
+            >
+              <div className="panel saved-panel">
+                {savedCollapsed ? (
+                  <div className="panel-collapsed" onClick={() => savedPanelRef.current?.expand()}>
+                    <span>Saved Insights</span>
+                  </div>
+                ) : (
+                  <>
+                <div className="section-header">
+                  <h2>Saved Insights</h2>
+                  <span>{savedInsights.length} saved</span>
+                  <CollapseButton
+                    panelRef={savedPanelRef}
+                    collapsed={savedCollapsed}
+                    onCollapsedChange={setSavedCollapsed}
+                    title="Saved Insights"
+                  />
+                </div>
+                <div className="bubbles">
+                  {savedInsights.length === 0 ? <p className="placeholder">Saved insights are global and in-memory only.</p> : null}
+                  {savedInsights.map((insight, index) => (
+                    <InsightBubble
+                      key={`saved_${index}`}
+                      insight={insight}
+                      onEvidenceClick={handleEvidenceClick}
+                      onSave={() => setSavedInsights((prev) => prev.filter((_, savedIndex) => savedIndex !== index))}
+                      saveText="Remove"
+                      resolveTeamName={resolveTeamName}
+                    />
+                  ))}
+                </div>
+                  </>
+                )}
+              </div>
+            </Panel>
+          </PanelGroup>
+          </div>
           )}
         </Panel>
       </PanelGroup>

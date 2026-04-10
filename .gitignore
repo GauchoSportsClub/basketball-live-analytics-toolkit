@@ -4,6 +4,8 @@ __pycache__/
 *.pyo
 *.pyd
 .venv/
+*.sqlite
+*.sqlite3
 
 # Node
 node_modules/
@@ -12,5 +14,22 @@ apps/web/node_modules/
 # Build outputs
 apps/web/dist/
 
+# Cached/source data
+data/
+
+# Editor / OS files
+.DS_Store
+.AppleDouble
+Thumbs.db
+.idea/
+.vscode/
+.cursor/
+*.log
+*.swp
+*.swo
+
 # Local env
 .env
+
+# Local scratch files
+test.ipynb
