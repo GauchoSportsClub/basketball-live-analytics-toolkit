@@ -39,6 +39,35 @@ const PBP_TEAM_ID = "pbp";
 // NOTE: ONLY PDF VALID GAME IDS: 401809115 AND 401826049
 
 const HIDDEN_COLUMNS = new Set(["row_key"]);
+const TRENDS_STAT_THRESHOLDS_TEAM = [
+  { stat_key: "points", value: 1.8 },
+  { stat_key: "field_goals_made", value: 0.65 },
+  { stat_key: "three_pointers_made", value: 0.19 },
+  { stat_key: "free_throws_made", value: 0.33 },
+  { stat_key: "rebounds", value: 0.9 },
+  { stat_key: "offensive_rebounds", value: 0.25 },
+  { stat_key: "defensive_rebounds", value: 0.65 },
+  { stat_key: "assists", value: 0.38 },
+  { stat_key: "steals", value: 0.18 },
+  { stat_key: "blocks", value: 0.1 },
+  { stat_key: "turnovers", value: 0.3 },
+  { stat_key: "fouls", value: 0.43 }
+];
+
+const TRENDS_STAT_THRESHOLDS_PLAYER = [
+  { stat_key: "points", value: 0.4 },
+  { stat_key: "field_goals_made", value: 0.15 },
+  { stat_key: "three_pointers_made", value: 0.044 },
+  { stat_key: "free_throws_made", value: 0.068 },
+  { stat_key: "rebounds", value: 0.16 },
+  { stat_key: "offensive_rebounds", value: 0.048 },
+  { stat_key: "defensive_rebounds", value: 0.112 },
+  { stat_key: "assists", value: 0.08 },
+  { stat_key: "steals", value: 0.032 },
+  { stat_key: "blocks", value: 0.02 },
+  { stat_key: "turnovers", value: 0.06 },
+  { stat_key: "fouls", value: 0.1 }
+];
 
 const DEFAULT_TABLE_STATE = {
   filter: "",
@@ -91,6 +120,411 @@ function formatInsightErrorMessage(error) {
     return "Insights are unavailable because `OPENAI_API_KEY` is not set in `.env` for the API server.";
   }
   return message;
+}
+
+function collectTrendIncrements(row) {
+  const increments = {};
+  const playType = String(row.type || "");
+  const text = String(row.text || "").toLowerCase();
+  const scoringPlay = Boolean(row.scoring_play);
+  const shootingPlay = Boolean(row.shooting_play);
+  const scoreValue = Number(row.score_value || 0);
+  const pointsAttempted = Number(row.points_attempted || 0);
+  const assistId = String(row.assist_athlete_id || "").trim();
+
+  if (scoringPlay && scoreValue > 0) increments.points = scoreValue;
+  if (shootingPlay && (pointsAttempted === 2 || pointsAttempted === 3)) {
+    increments.field_goals_attempted = 1;
+    if (pointsAttempted === 2) increments.two_pointers_attempted = 1;
+    if (pointsAttempted === 3) increments.three_pointers_attempted = 1;
+  }
+  if (scoringPlay && (scoreValue === 2 || scoreValue === 3)) {
+    increments.field_goals_made = 1;
+    if (scoreValue === 2) increments.two_pointers_made = 1;
+    if (scoreValue === 3) increments.three_pointers_made = 1;
+  }
+  if (text.includes("free throw")) {
+    increments.free_throws_attempted = 1;
+    if (scoringPlay && scoreValue === 1) increments.free_throws_made = 1;
+  }
+  if (playType === "Offensive Rebound") {
+    increments.offensive_rebounds = 1;
+    increments.rebounds = 1;
+  } else if (playType === "Defensive Rebound") {
+    increments.defensive_rebounds = 1;
+    increments.rebounds = 1;
+  }
+  if (playType === "Steal") increments.steals = 1;
+  if (playType === "Block Shot") increments.blocks = 1;
+  if (playType.toLowerCase().includes("turnover")) increments.turnovers = 1;
+  if (playType.toLowerCase().includes("foul")) increments.fouls = 1;
+  if (assistId && scoringPlay) increments.assists = 1;
+  return increments;
+}
+
+function normalizeTrendPeriod(periodValue) {
+  const raw = String(periodValue || "")
+    .toLowerCase()
+    .trim();
+  if (!raw) return "2";
+  if (raw.includes("1") || raw.includes("first") || raw === "1h" || raw === "1st") {
+    return "1";
+  }
+  return "2";
+}
+
+function parseClockRemainingSeconds(clockValue) {
+  const raw = String(clockValue || "").trim();
+  const match = raw.match(/^(\d{1,2}):(\d{2})$/);
+  if (!match) return null;
+  const minutes = Number(match[1]);
+  const seconds = Number(match[2]);
+  if (Number.isNaN(minutes) || Number.isNaN(seconds) || seconds > 59) {
+    return null;
+  }
+  return minutes * 60 + seconds;
+}
+
+function halfTimestampSeconds(row) {
+  const HALF_LENGTH_SECONDS = 20 * 60;
+  const remaining = parseClockRemainingSeconds(row.clock);
+  if (remaining === null) return 0;
+  const elapsed = HALF_LENGTH_SECONDS - remaining;
+  if (elapsed < 0) return 0;
+  if (elapsed > HALF_LENGTH_SECONDS) return HALF_LENGTH_SECONDS;
+  return elapsed;
+}
+
+function formatHalfRemainingClock(elapsedSeconds) {
+  const HALF_LENGTH_SECONDS = 20 * 60;
+  const safeElapsed = Math.max(0, Math.min(HALF_LENGTH_SECONDS, elapsedSeconds));
+  const remaining = HALF_LENGTH_SECONDS - safeElapsed;
+  const minutes = Math.floor(remaining / 60);
+  const seconds = remaining % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function deriveTrendsCheckpoint(rows) {
+  const fallback = {
+    currentHalf: "1",
+    currentTimestamp: 10 * 60,
+    label: "1st Half 10:00"
+  };
+  if (!Array.isArray(rows) || !rows.length) {
+    return fallback;
+  }
+
+  let latest = null;
+  for (const row of rows) {
+    const currentHalf = normalizeTrendPeriod(row?.period);
+    const halfRank = Number(currentHalf || 0);
+    const currentTimestamp = halfTimestampSeconds(row);
+    if (!latest || halfRank > latest.halfRank || (halfRank === latest.halfRank && currentTimestamp > latest.currentTimestamp)) {
+      const rawPeriod = String(row?.period || "").trim();
+      const periodLabel = rawPeriod || (currentHalf === "1" ? "1st Half" : "2nd Half");
+      const rawClock = String(row?.clock || "").trim();
+      latest = {
+        halfRank,
+        currentHalf,
+        currentTimestamp,
+        label: `${periodLabel} ${rawClock || formatHalfRemainingClock(currentTimestamp)}`
+      };
+    }
+  }
+
+  if (!latest) {
+    return fallback;
+  }
+  return {
+    currentHalf: latest.currentHalf,
+    currentTimestamp: latest.currentTimestamp,
+    label: latest.label
+  };
+}
+
+function buildTrendsAnalyticsTimelines(rows) {
+  const perTeamTotals = {};
+  const perTeamStats = {};
+
+  rows.forEach((row) => {
+    const rawTeamId = String(row.team_id || "").trim();
+    if (!rawTeamId) return;
+    const normalizedTeamId = normalizeTeamIdInput(rawTeamId);
+    let teamId = normalizedTeamId;
+    if (normalizedTeamId === "ucsb" || normalizedTeamId === UCSB_TEAM_ID) {
+      teamId = UCSB_TEAM_ID;
+    } else if (normalizedTeamId === "opponent") {
+      teamId = "opponent";
+    }
+    if (!teamId) return;
+    const increments = collectTrendIncrements(row);
+    const statKeys = Object.keys(increments);
+    if (!statKeys.length) return;
+    if (!perTeamTotals[teamId]) perTeamTotals[teamId] = {};
+    if (!perTeamStats[teamId]) perTeamStats[teamId] = {};
+
+    statKeys.forEach((statKey) => {
+      const increment = Number(increments[statKey] || 0);
+      if (increment <= 0) return;
+      const total = Number(perTeamTotals[teamId][statKey] || 0) + increment;
+      perTeamTotals[teamId][statKey] = total;
+      if (!perTeamStats[teamId][statKey]) perTeamStats[teamId][statKey] = [];
+      perTeamStats[teamId][statKey].push({
+        timestamp: halfTimestampSeconds(row),
+        period: normalizeTrendPeriod(row.period),
+        increment,
+        total
+      });
+    });
+  });
+
+  const out = {};
+  Object.entries(perTeamStats).forEach(([teamId, statMap]) => {
+    out[teamId] = Object.entries(statMap).map(([statKey, events]) => ({
+      stat_key: statKey,
+      events
+    }));
+  });
+  return out;
+}
+
+function buildTrendsPlayerAnalyticsTimelines(rows, playerNameById = {}) {
+  const perPlayerTotals = {};
+  const perPlayerStats = {};
+  const perPlayerTeam = {};
+
+  rows.forEach((row) => {
+    const rawTeamId = String(row.team_id || "").trim();
+    const normalizedTeamId = normalizeTeamIdInput(rawTeamId);
+    const teamId =
+      normalizedTeamId === "ucsb" || normalizedTeamId === UCSB_TEAM_ID
+        ? UCSB_TEAM_ID
+        : normalizedTeamId === "opponent"
+          ? "opponent"
+          : normalizedTeamId;
+
+    const actorId = String(row.athlete_id || "").trim();
+    const assistId = String(row.assist_athlete_id || "").trim();
+    const actorIncrements = collectTrendIncrements(row);
+    const perPlayerIncrements = {};
+
+    if (actorId) {
+      perPlayerIncrements[actorId] = { ...actorIncrements };
+      delete perPlayerIncrements[actorId].assists;
+      if (teamId) {
+        perPlayerTeam[actorId] = teamId;
+      }
+    }
+    if (assistId && row.scoring_play) {
+      if (!perPlayerIncrements[assistId]) {
+        perPlayerIncrements[assistId] = {};
+      }
+      perPlayerIncrements[assistId].assists = Number(perPlayerIncrements[assistId].assists || 0) + 1;
+      if (teamId && !perPlayerTeam[assistId]) {
+        perPlayerTeam[assistId] = teamId;
+      }
+    }
+
+    Object.entries(perPlayerIncrements).forEach(([playerId, increments]) => {
+      const statKeys = Object.keys(increments);
+      if (!statKeys.length) return;
+      if (!perPlayerTotals[playerId]) perPlayerTotals[playerId] = {};
+      if (!perPlayerStats[playerId]) perPlayerStats[playerId] = {};
+
+      statKeys.forEach((statKey) => {
+        const increment = Number(increments[statKey] || 0);
+        if (increment <= 0) return;
+        const total = Number(perPlayerTotals[playerId][statKey] || 0) + increment;
+        perPlayerTotals[playerId][statKey] = total;
+        if (!perPlayerStats[playerId][statKey]) perPlayerStats[playerId][statKey] = [];
+        perPlayerStats[playerId][statKey].push({
+          timestamp: halfTimestampSeconds(row),
+          period: normalizeTrendPeriod(row.period),
+          increment,
+          total
+        });
+      });
+    });
+  });
+
+  const out = {};
+  Object.entries(perPlayerStats).forEach(([playerId, statMap]) => {
+    out[playerId] = {
+      player_name: playerNameById[playerId] || `Player ${playerId}`,
+      team_id: perPlayerTeam[playerId] || "",
+      stats: Object.entries(statMap).map(([statKey, events]) => ({
+        stat_key: statKey,
+        events
+      }))
+    };
+  });
+  return out;
+}
+
+function trendsStatLabel(statKey) {
+  return String(statKey || "")
+    .replace(/_/g, " ")
+    .trim();
+}
+
+function buildTrendsMessages({
+  teamTimelines,
+  playerTimelines,
+  teamNameById,
+  overMultiplier,
+  underMultiplier,
+  currentHalf,
+  currentTimestamp
+}) {
+  const thresholdByStat = Object.fromEntries(
+    TRENDS_STAT_THRESHOLDS_TEAM.map((threshold) => [threshold.stat_key, threshold])
+  );
+  const thresholdByPlayerStat = Object.fromEntries(
+    TRENDS_STAT_THRESHOLDS_PLAYER.map((threshold) => [threshold.stat_key, threshold])
+  );
+  const effectiveHalf = currentHalf || "1";
+  const effectiveTimestamp =
+    typeof currentTimestamp === "number" && currentTimestamp >= 0
+      ? currentTimestamp
+      : 10 * 60;
+  const maxWindowMinutes = Math.floor(effectiveTimestamp / 60);
+  const messages = [];
+  const playerMessages = [];
+
+  for (const [teamId, stats] of Object.entries(teamTimelines || {})) {
+    const teamLabel =
+      teamId === UCSB_TEAM_ID
+        ? "UCSB"
+        : teamId === "opponent"
+          ? "Opponent"
+          : teamNameById[teamId] || teamId || "Opponent";
+
+    for (const statEntry of stats) {
+      const statKey = String(statEntry.stat_key || "");
+      const threshold = thresholdByStat[statKey];
+      if (!threshold) continue;
+      const nationalAverage = Number(threshold.value || 0);
+      if (nationalAverage <= 0) continue;
+
+      const overThreshold = nationalAverage * overMultiplier;
+      const underThreshold = nationalAverage * underMultiplier;
+      const events = (statEntry.events || [])
+        .filter((event) => event.period === effectiveHalf && typeof event.timestamp === "number" && event.timestamp <= effectiveTimestamp)
+        .sort((left, right) => left.timestamp - right.timestamp);
+      if (!events.length) continue;
+
+      let bestOverMinutes = 0;
+      let bestOverTotal = 0;
+      let bestUnderMinutes = 0;
+      let bestUnderTotal = 0;
+      for (let minutes = 3; minutes <= maxWindowMinutes; minutes += 1) {
+        const windowStart = effectiveTimestamp - minutes * 60;
+        let total = 0;
+        for (const event of events) {
+          if (event.timestamp > windowStart) {
+            total += Number(event.increment || 0);
+          }
+        }
+        const rate = total / minutes;
+        if (rate >= overThreshold && minutes > bestOverMinutes) {
+          bestOverMinutes = minutes;
+          bestOverTotal = total;
+        }
+        if (rate <= underThreshold && minutes > bestUnderMinutes) {
+          bestUnderMinutes = minutes;
+          bestUnderTotal = total;
+        }
+      }
+
+      if (bestOverMinutes && bestOverTotal >= 3) {
+        messages.push({
+          text:
+            statKey === "points"
+              ? `${teamLabel} has scored ${bestOverTotal} points in the last ${bestOverMinutes} minutes.`
+              : `${teamLabel} has ${bestOverTotal} ${trendsStatLabel(statKey)} in the last ${bestOverMinutes} minutes.`,
+          tone: "good"
+        });
+      }
+
+      if (bestUnderMinutes) {
+        messages.push({
+          text:
+            statKey === "points"
+              ? `${teamLabel} has scored ${bestUnderTotal} points in the last ${bestUnderMinutes} minutes.`
+              : `${teamLabel} has ${bestUnderTotal} ${trendsStatLabel(statKey)} in the last ${bestUnderMinutes} minutes.`,
+          tone: "bad"
+        });
+      }
+    }
+  }
+
+  for (const [playerId, playerData] of Object.entries(playerTimelines || {})) {
+    const teamId = String(playerData.team_id || "");
+    const teamLabel =
+      teamId === UCSB_TEAM_ID
+        ? "UCSB"
+        : teamId === "opponent"
+          ? "Opponent"
+          : teamNameById[teamId] || teamId || "";
+    const playerLabel = `${playerData.player_name || `Player ${playerId}`}${teamLabel ? ` (${teamLabel})` : ""}`;
+
+    for (const statEntry of playerData.stats || []) {
+      const statKey = String(statEntry.stat_key || "");
+      const threshold = thresholdByPlayerStat[statKey];
+      if (!threshold) continue;
+      const nationalAverage = Number(threshold.value || 0);
+      if (nationalAverage <= 0) continue;
+
+      const overThreshold = nationalAverage * overMultiplier;
+      const events = (statEntry.events || [])
+        .filter((event) => event.period === effectiveHalf && typeof event.timestamp === "number" && event.timestamp <= effectiveTimestamp)
+        .sort((left, right) => left.timestamp - right.timestamp);
+      if (!events.length) continue;
+
+      let bestOverMinutes = 0;
+      let bestOverTotal = 0;
+      for (let minutes = 3; minutes <= maxWindowMinutes; minutes += 1) {
+        const windowStart = effectiveTimestamp - minutes * 60;
+        let total = 0;
+        for (const event of events) {
+          if (event.timestamp > windowStart) {
+            total += Number(event.increment || 0);
+          }
+        }
+        if (total / minutes >= overThreshold && minutes > bestOverMinutes) {
+          bestOverMinutes = minutes;
+          bestOverTotal = total;
+        }
+      }
+
+      if (bestOverMinutes && bestOverTotal >= 3) {
+        playerMessages.push({
+          text:
+            statKey === "points"
+              ? `${playerLabel} has scored ${bestOverTotal} points in the last ${bestOverMinutes} minutes.`
+              : `${playerLabel} has ${bestOverTotal} ${trendsStatLabel(statKey)} in the last ${bestOverMinutes} minutes.`,
+          tone: "good"
+        });
+      }
+    }
+  }
+
+  return { messages, playerMessages };
+}
+
+function buildPlayerNameMapFromLiveStats(payload) {
+  const map = {};
+  const datasets = [payload?.ucsb_players?.rows || [], payload?.opponent_players?.rows || []];
+  for (const rows of datasets) {
+    for (const row of rows) {
+      const rowKey = String(row?.row_key || "");
+      const playerName = String(row?.Player || "").trim();
+      const match = rowKey.match(/_player_([A-Za-z0-9_-]+)$/);
+      if (!match || !playerName) continue;
+      map[match[1]] = playerName;
+    }
+  }
+  return map;
 }
 
 function getPerformanceColor(liveStats, seasonStatsPer, threshold) {
@@ -265,12 +699,14 @@ export default function App() {
   const [activeSeasonSide, setActiveSeasonSide] = useState("ucsb");
   const [seasonDataCollapsed, setSeasonDataCollapsed] = useState(false);
   const [gameDataCollapsed, setGameDataCollapsed] = useState(false);
+  const [trendsCollapsed, setTrendsCollapsed] = useState(false);
   const [promptCollapsed, setPromptCollapsed] = useState(false);
   const [savedCollapsed, setSavedCollapsed] = useState(false);
   const [insightsColumnCollapsed, setInsightsColumnCollapsed] = useState(false);
 
   const seasonDataPanelRef = useRef();
   const gameDataPanelRef = useRef();
+  const trendsPanelRef = useRef();
   const promptPanelRef = useRef();
   const savedPanelRef = useRef();
   const insightsColumnRef = useRef();
@@ -317,6 +753,18 @@ export default function App() {
     ucsb: { ...DEFAULT_TABLE_STATE },
     opponent: { ...DEFAULT_TABLE_STATE }
   });
+  const [trendsUpdating, setTrendsUpdating] = useState(false);
+  const [trendsError, setTrendsError] = useState("");
+  const [trendsUpdatedAt, setTrendsUpdatedAt] = useState("");
+  const [trendsTimelines, setTrendsTimelines] = useState({});
+  const [trendsPlayerTimelines, setTrendsPlayerTimelines] = useState({});
+  const [trendsMessages, setTrendsMessages] = useState([]);
+  const [trendsPlayerMessages, setTrendsPlayerMessages] = useState([]);
+  const [trendsOverMultiplier, setTrendsOverMultiplier] = useState(1);
+  const [trendsUnderMultiplier, setTrendsUnderMultiplier] = useState(1);
+  const [trendsCurrentHalf, setTrendsCurrentHalf] = useState("1");
+  const [trendsCurrentTimestamp, setTrendsCurrentTimestamp] = useState(10 * 60);
+  const [trendsCheckpointLabel, setTrendsCheckpointLabel] = useState("1st Half 10:00");
 
   const [prompt, setPrompt] = useState("");
   const [contextEnabled, setContextEnabled] = useState({
@@ -507,6 +955,80 @@ export default function App() {
       setPbpUpdating(false);
     }
   }, [loadPbp, pbpGameId]);
+
+  const updateTrends = useCallback(async () => {
+    setTrendsUpdating(true);
+    setTrendsError("");
+    try {
+      await fetchJson(
+        `${API_BASE}/api/pbp/update`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ force: true, game_id: pbpGameId })
+        },
+        1
+      );
+      const payload = await fetchJson(`${API_BASE}/api/pbp?game_id=${encodeURIComponent(pbpGameId)}`, {}, 1);
+      const opponent = normalizedOpponentTeamId ? `&opponent=${encodeURIComponent(normalizedOpponentTeamId)}` : "";
+      const livePayload = await fetchJson(
+        `${API_BASE}/api/pbp/live-stats?ucsb=${encodeURIComponent(UCSB_TEAM_ID)}${opponent}&game_id=${encodeURIComponent(pbpGameId)}`,
+        {},
+        1
+      );
+      const playerNameById = buildPlayerNameMapFromLiveStats(livePayload);
+      const teamTimelines = buildTrendsAnalyticsTimelines(payload.rows || []);
+      const playerTimelines = buildTrendsPlayerAnalyticsTimelines(payload.rows || [], playerNameById);
+      const checkpoint = deriveTrendsCheckpoint(payload.rows || []);
+      setTrendsTimelines(teamTimelines);
+      setTrendsPlayerTimelines(playerTimelines);
+      setTrendsCurrentHalf(checkpoint.currentHalf);
+      setTrendsCurrentTimestamp(checkpoint.currentTimestamp);
+      setTrendsCheckpointLabel(checkpoint.label);
+      const { messages, playerMessages } = buildTrendsMessages({
+        teamTimelines,
+        playerTimelines,
+        teamNameById,
+        overMultiplier: trendsOverMultiplier,
+        underMultiplier: trendsUnderMultiplier,
+        currentHalf: checkpoint.currentHalf,
+        currentTimestamp: checkpoint.currentTimestamp
+      });
+      setTrendsMessages(messages);
+      setTrendsPlayerMessages(playerMessages);
+      setTrendsUpdatedAt(payload.updated_at || new Date().toISOString());
+    } catch (error) {
+      setTrendsError(error.message);
+      setTrendsTimelines({});
+      setTrendsPlayerTimelines({});
+      setTrendsMessages([]);
+      setTrendsPlayerMessages([]);
+    } finally {
+      setTrendsUpdating(false);
+    }
+  }, [pbpGameId, normalizedOpponentTeamId, teamNameById, trendsOverMultiplier, trendsUnderMultiplier]);
+
+  useEffect(() => {
+    const { messages, playerMessages } = buildTrendsMessages({
+      teamTimelines: trendsTimelines,
+      playerTimelines: trendsPlayerTimelines,
+      teamNameById,
+      overMultiplier: trendsOverMultiplier,
+      underMultiplier: trendsUnderMultiplier,
+      currentHalf: trendsCurrentHalf,
+      currentTimestamp: trendsCurrentTimestamp
+    });
+    setTrendsMessages(messages);
+    setTrendsPlayerMessages(playerMessages);
+  }, [
+    trendsTimelines,
+    trendsPlayerTimelines,
+    teamNameById,
+    trendsOverMultiplier,
+    trendsUnderMultiplier,
+    trendsCurrentHalf,
+    trendsCurrentTimestamp
+  ]);
 
   const resolveTeamName = useCallback(
     (teamId) => {
@@ -1172,6 +1694,125 @@ export default function App() {
                 />
               </>
             )}
+              </>
+            )}
+          </div>
+        </Panel>
+
+        <PanelResizeHandle className="resize-handle vertical" />
+
+        <Panel
+          ref={trendsPanelRef}
+          defaultSize={20}
+          minSize={14}
+          collapsible
+          collapsedSize={4}
+          onCollapse={() => setTrendsCollapsed(true)}
+          onExpand={() => setTrendsCollapsed(false)}
+        >
+          <div className="panel trends-panel">
+            {trendsCollapsed ? (
+              <div className="panel-collapsed" onClick={() => trendsPanelRef.current?.expand()}>
+                <span>Trends</span>
+              </div>
+            ) : (
+              <>
+                <div className="section-header">
+                  <h2>Trends</h2>
+                  <span>Teams and players trending now</span>
+                  <CollapseButton
+                    panelRef={trendsPanelRef}
+                    collapsed={trendsCollapsed}
+                    onCollapsedChange={setTrendsCollapsed}
+                    title="Trends"
+                  />
+                </div>
+                <div className="table-status">
+                  <button type="button" onClick={updateTrends} disabled={trendsUpdating}>
+                    {trendsUpdating ? "Updating..." : "Update Trends"}
+                  </button>
+                  {trendsUpdatedAt ? <span> Updated {new Date(trendsUpdatedAt).toLocaleString()}</span> : <span> No trends snapshot yet.</span>}
+                  {trendsError ? <span className="error"> {trendsError}</span> : null}
+                </div>
+                <div className="table-status trends-threshold-controls">
+                  <label>
+                    Over threshold multiplier
+                    <input
+                      type="range"
+                      min="1"
+                      max="5"
+                      step="0.05"
+                      value={trendsOverMultiplier}
+                      onChange={(event) => setTrendsOverMultiplier(Number(event.target.value))}
+                    />
+                    <span>x{trendsOverMultiplier.toFixed(2)}</span>
+                  </label>
+                  <label>
+                    Under threshold multiplier
+                    <input
+                      type="range"
+                      min="0.1"
+                      max="1"
+                      step="0.05"
+                      value={trendsUnderMultiplier}
+                      onChange={(event) => setTrendsUnderMultiplier(Number(event.target.value))}
+                    />
+                    <span>x{trendsUnderMultiplier.toFixed(2)}</span>
+                  </label>
+                </div>
+                <div className="table-status">
+                  <span>Checkpoint: {trendsCheckpointLabel}</span>
+                </div>
+                <div className="table-status">
+                  <span>Tracked teams: {Object.keys(trendsTimelines).length}</span>
+                </div>
+                <div className="table-status">
+                  {trendsMessages.length ? <span>Messages: {trendsMessages.length}</span> : <span>No over/under messages at the current checkpoint.</span>}
+                </div>
+                <div className="table-scroll">
+                  {trendsMessages.length ? (
+                    <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                      {trendsMessages.map((message, index) => (
+                        <li
+                          key={`trend_message_${index}`}
+                          style={{
+                            backgroundColor: message.tone === "good" ? "rgba(34, 197, 94, 0.18)" : "rgba(239, 68, 68, 0.18)",
+                            border: message.tone === "good" ? "1px solid rgba(34, 197, 94, 0.5)" : "1px solid rgba(239, 68, 68, 0.5)",
+                            borderRadius: "0",
+                            padding: "8px 10px",
+                            marginBottom: "0",
+                            fontSize: "12px"
+                          }}
+                        >
+                          {message.text}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+                <div className="table-scroll">
+                  {trendsPlayerMessages.length ? (
+                    <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                      {trendsPlayerMessages.map((message, index) => (
+                        <li
+                          key={`trend_player_message_${index}`}
+                          style={{
+                            backgroundColor: message.tone === "good" ? "rgba(34, 197, 94, 0.18)" : "rgba(239, 68, 68, 0.18)",
+                            border: message.tone === "good" ? "1px solid rgba(34, 197, 94, 0.5)" : "1px solid rgba(239, 68, 68, 0.5)",
+                            borderRadius: "0",
+                            padding: "8px 10px",
+                            marginBottom: "0",
+                            fontSize: "12px"
+                          }}
+                        >
+                          {message.text}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <span>No individual trends at the current checkpoint.</span>
+                  )}
+                </div>
               </>
             )}
           </div>

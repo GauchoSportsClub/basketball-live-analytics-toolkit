@@ -19,7 +19,14 @@ data/
 
 # Editor / OS files
 .DS_Store
+.AppleDouble
+Thumbs.db
+.idea/
+.vscode/
 .cursor/
+*.log
+*.swp
+*.swo
 
 # Local env
 .env
