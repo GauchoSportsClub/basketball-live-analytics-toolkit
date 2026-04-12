@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import {
   buildPbpFilterQuery,
   canApplyPbpAdvancedFilters,
@@ -92,6 +93,71 @@ function comparableValue(value) {
     return { type: "number", value: numeric };
   }
   return { type: "string", value: normalized.toLowerCase() };
+}
+
+function PlayerPerformanceStory({ playerTimeline, teamName }) {
+  const [activeStat, setActiveStat] = useState("points");
+
+  // Safety check: if no player is selected or data is missing
+  if (!playerTimeline || !playerTimeline.stats) {
+    return <div className="placeholder" style={{ padding: '20px', textAlign: 'center' }}>
+      Select a player to see their performance history.
+    </div>;
+  }
+
+  const statEntry = playerTimeline.stats.find(s => s.stat_key === activeStat);
+  
+  // Build chart data - starting with 0,0 prevents axis crashes
+  const chartData = [
+    { time: 0, total: 0, displayTime: "0:00" },
+    ...(statEntry?.events || []).map(event => ({
+      time: event.timestamp || 0,
+      total: event.total || 0,
+      displayTime: `${event.period || '1'}H ${Math.floor((event.timestamp || 0) / 60)}:${String((event.timestamp || 0) % 60).padStart(2, '0')}`
+    }))
+  ];
+
+  return (
+    <div className="player-story-container" style={{ padding: '15px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+        <div>
+          <h3 style={{ margin: 0, fontSize: '16px' }}>{playerTimeline.player_name}</h3>
+          <small style={{ color: '#888' }}>{teamName}</small>
+        </div>
+        <select value={activeStat} onChange={(e) => setActiveStat(e.target.value)} style={{ padding: '4px' }}>
+          <option value="points">Points</option>
+          <option value="rebounds">Rebounds</option>
+          <option value="assists">Assists</option>
+        </select>
+      </div>
+      
+      <div style={{ width: '100%', height: 250, background: '#f8f9fa', borderRadius: '8px', padding: '10px' }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#ddd" />
+            <XAxis dataKey="time" hide />
+            <YAxis allowDecimals={false} domain={[0, 'auto']} />
+            <Tooltip 
+              // This safer formatter prevents crashes on empty points
+              labelFormatter={(label) => {
+                const point = chartData.find(d => d.time === label);
+                return point ? point.displayTime : "Time: " + label;
+              }}
+              contentStyle={{ backgroundColor: '#111', border: 'none', borderRadius: '4px', color: '#fff' }}
+            />
+            <Line 
+              type="stepAfter" 
+              dataKey="total" 
+              stroke="#2563eb" 
+              strokeWidth={3} 
+              dot={{ r: 4, fill: '#2563eb', strokeWidth: 2 }} 
+              isAnimationActive={true}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
 }
 
 async function fetchJson(url, options = {}, retries = 0) {
@@ -701,6 +767,7 @@ export default function App() {
   const [gameDataCollapsed, setGameDataCollapsed] = useState(false);
   const [trendsCollapsed, setTrendsCollapsed] = useState(false);
   const [promptCollapsed, setPromptCollapsed] = useState(false);
+  const [selectedStoryPlayerId, setSelectedStoryPlayerId] = useState("");
   const [savedCollapsed, setSavedCollapsed] = useState(false);
   const [insightsColumnCollapsed, setInsightsColumnCollapsed] = useState(false);
 
@@ -1431,7 +1498,7 @@ export default function App() {
                 </div>
                 <div className="team-line opponent-line">
                   {espnTeams.length > 0 ? (
-                    <select value={normalizedOpponentTeamId} onChange={(event) => setOpponentTeamId(event.target.value)}>
+                    <select value={selectedStoryPlayerId} onChange={(e) => selectedStoryPlayerId(e.target.value)}>
                       <option value="">Select ESPN team</option>
                       {espnTeams
                         .filter((team) => normalizeTeamIdInput(team.team_id) !== UCSB_TEAM_ID)
@@ -1831,139 +1898,50 @@ export default function App() {
         >
           {insightsColumnCollapsed ? (
             <div className="panel-collapsed" onClick={() => insightsColumnRef.current?.expand()}>
-              <span>Insights</span>
+              <span>Player Performance</span>
             </div>
           ) : (
-          <div className="insights-column">
-            <div className="insights-column-header">
-              <span>Insights</span>
-              <CollapseButton
-                panelRef={insightsColumnRef}
-                collapsed={insightsColumnCollapsed}
-                onCollapsedChange={setInsightsColumnCollapsed}
-                title="Insights"
-              />
-            </div>
-            <PanelGroup direction="vertical" className="insights-panel-group">
-            <Panel
-              ref={promptPanelRef}
-              defaultSize={68}
-              minSize={36}
-              collapsible
-              collapsedSize={4}
-              onCollapse={() => setPromptCollapsed(true)}
-              onExpand={() => setPromptCollapsed(false)}
-            >
-              <div className="panel prompt-panel">
-                {promptCollapsed ? (
-                  <div className="panel-collapsed" onClick={() => promptPanelRef.current?.expand()}>
-                    <span>Prompt + Insights</span>
-                  </div>
-                ) : (
-                  <>
-                <div className="section-header">
-                  <h2>Prompt + Insights</h2>
-                  <span>Structured output with evidence refs</span>
-                  <CollapseButton
-                    panelRef={promptPanelRef}
-                    collapsed={promptCollapsed}
-                    onCollapsedChange={setPromptCollapsed}
-                    title="Prompt + Insights"
-                  />
-                </div>
-
-                <textarea
-                  value={prompt}
-                  onChange={(event) => setPrompt(event.target.value)}
-                  placeholder="Enter Prompt"
+            <div className="insights-column">
+              <div className="insights-column-header">
+                <span>Individual Player Performance</span>
+                <CollapseButton
+                  panelRef={insightsColumnRef}
+                  collapsed={insightsColumnCollapsed}
+                  onCollapsedChange={setInsightsColumnCollapsed}
+                  title="Player Performance"
                 />
-
-                <div className="prompt-actions">
-                  <button type="button" onClick={generateInsights} disabled={insightLoading || !prompt.trim()}>
-                    {insightLoading ? "Submitting..." : "Submit"}
-                  </button>
-                  {insightError ? <span className="error">{insightError}</span> : null}
-                </div>
-
-                <p className="prompt-note">Full PBP table is always included as primary context.</p>
-
-                <div className="context-buttons">
-                  <button type="button" className={contextEnabled.ucsbTeam ? "active" : ""} onClick={() => setContextEnabled((prev) => ({ ...prev, ucsbTeam: !prev.ucsbTeam, ucsbPlayers: !prev.ucsbTeam }))}>
-                    Include UCSB Season Data
-                  </button>
-                  <button type="button" className={contextEnabled.opponentTeam ? "active" : ""} onClick={() => setContextEnabled((prev) => ({ ...prev, opponentTeam: !prev.opponentTeam, opponentPlayers: !prev.opponentTeam }))} disabled={!normalizedOpponentTeamId}>
-                    Include Opponent Season Data
-                  </button>
-                </div>
-
-                <div className="bubbles">
-                  {insights.length === 0 ? <p className="placeholder">Generated insights will appear here.</p> : null}
-                  {insights.map((insight, index) => (
-                    <InsightBubble
-                      key={`insight_${index}`}
-                      insight={insight}
-                      onEvidenceClick={handleEvidenceClick}
-                      onSave={() => setSavedInsights((prev) => [...prev, insight])}
-                      saveText="Save"
-                      resolveTeamName={resolveTeamName}
-                    />
-                  ))}
-                </div>
-                  </>
-                )}
               </div>
-            </Panel>
 
-            <PanelResizeHandle className="resize-handle horizontal" />
+              <div className="panel story-panel" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                <div style={{ padding: '15px', borderBottom: '1px solid #eee' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>
+                    SELECT PLAYER
+                  </label>
+                  <select 
+                    style={{ width: '100%', padding: '8px' }}
+                    value={selectedStoryPlayerId}
+                    onChange={(e) => setSelectedStoryPlayerId(e.target.value)}
+                  >
+                    <option value="">Choose a player...</option>
+                    {Object.entries(trendsPlayerTimelines).map(([id, data]) => (
+                      <option key={id} value={id}>
+                        {data.player_name} ({resolveTeamName(data.team_id)})
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-            <Panel
-              ref={savedPanelRef}
-              defaultSize={32}
-              minSize={20}
-              collapsible
-              collapsedSize={4}
-              onCollapse={() => setSavedCollapsed(true)}
-              onExpand={() => setSavedCollapsed(false)}
-            >
-              <div className="panel saved-panel">
-                {savedCollapsed ? (
-                  <div className="panel-collapsed" onClick={() => savedPanelRef.current?.expand()}>
-                    <span>Saved Insights</span>
-                  </div>
-                ) : (
-                  <>
-                <div className="section-header">
-                  <h2>Saved Insights</h2>
-                  <span>{savedInsights.length} saved</span>
-                  <CollapseButton
-                    panelRef={savedPanelRef}
-                    collapsed={savedCollapsed}
-                    onCollapsedChange={setSavedCollapsed}
-                    title="Saved Insights"
+                <div style={{ flex: 1, overflowY: 'auto' }}>
+                  <PlayerPerformanceStory 
+                    playerTimeline={trendsPlayerTimelines[selectedStoryPlayerId]}
+                    teamName={resolveTeamName(trendsPlayerTimelines[selectedStoryPlayerId]?.team_id)}
                   />
                 </div>
-                <div className="bubbles">
-                  {savedInsights.length === 0 ? <p className="placeholder">Saved insights are global and in-memory only.</p> : null}
-                  {savedInsights.map((insight, index) => (
-                    <InsightBubble
-                      key={`saved_${index}`}
-                      insight={insight}
-                      onEvidenceClick={handleEvidenceClick}
-                      onSave={() => setSavedInsights((prev) => prev.filter((_, savedIndex) => savedIndex !== index))}
-                      saveText="Remove"
-                      resolveTeamName={resolveTeamName}
-                    />
-                  ))}
-                </div>
-                  </>
-                )}
               </div>
-            </Panel>
-          </PanelGroup>
-          </div>
+            </div>
           )}
         </Panel>
-      </PanelGroup>
-    </div>
-  );
-}
+        </PanelGroup>
+        </div>
+        );
+        }
