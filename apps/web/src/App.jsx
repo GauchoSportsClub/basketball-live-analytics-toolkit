@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import {
   buildPbpFilterQuery,
   canApplyPbpAdvancedFilters,
@@ -95,66 +95,107 @@ function comparableValue(value) {
   return { type: "string", value: normalized.toLowerCase() };
 }
 
-function PlayerPerformanceStory({ playerTimeline, teamName }) {
+function PlayerPerformanceStory({ playerTimeline, teamName, seasonAvg }) {
   const [activeStat, setActiveStat] = useState("points");
 
-  // Safety check: if no player is selected or data is missing
   if (!playerTimeline || !playerTimeline.stats) {
-    return <div className="placeholder" style={{ padding: '20px', textAlign: 'center' }}>
-      Select a player to see their performance history.
+    return <div className="placeholder" style={{ padding: '40px', textAlign: 'center' }}>
+      Select a player to visualize their game impact.
     </div>;
   }
 
   const statEntry = playerTimeline.stats.find(s => s.stat_key === activeStat);
   
-  // Build chart data - starting with 0,0 prevents axis crashes
+  // Clean data for the chart
   const chartData = [
     { time: 0, total: 0, displayTime: "0:00" },
     ...(statEntry?.events || []).map(event => ({
       time: event.timestamp || 0,
       total: event.total || 0,
-      displayTime: `${event.period || '1'}H ${Math.floor((event.timestamp || 0) / 60)}:${String((event.timestamp || 0) % 60).padStart(2, '0')}`
+      displayTime: `${event.period}H ${Math.floor(event.timestamp / 60)}:${String(event.timestamp % 60).padStart(2, '0')}`
     }))
   ];
 
-  return (
-    <div className="player-story-container" style={{ padding: '15px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-        <div>
-          <h3 style={{ margin: 0, fontSize: '16px' }}>{playerTimeline.player_name}</h3>
-          <small style={{ color: '#888' }}>{teamName}</small>
+  const CustomTooltip = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="custom-tooltip">
+          <span className="label">{payload[0].payload.displayTime}</span>
+          <span className="value">{payload[0].value} {activeStat.toUpperCase()}</span>
         </div>
-        <select value={activeStat} onChange={(e) => setActiveStat(e.target.value)} style={{ padding: '4px' }}>
+      );
+    }
+    return null;
+  };
+
+  return (
+    <div className="player-story-card">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+        <div>
+          <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: 'var(--ink)' }}>
+            {playerTimeline.player_name}
+          </h3>
+          <span style={{ color: 'var(--muted)', fontSize: '0.85rem', fontWeight: 500 }}>{teamName}</span>
+        </div>
+        <select 
+          value={activeStat} 
+          onChange={(e) => setActiveStat(e.target.value)} 
+          className="stat-selector"
+          style={{ padding: '6px 12px', borderRadius: '10px', background: 'var(--panel-strong)' }}
+        >
           <option value="points">Points</option>
           <option value="rebounds">Rebounds</option>
           <option value="assists">Assists</option>
         </select>
       </div>
       
-      <div style={{ width: '100%', height: 250, background: '#f8f9fa', borderRadius: '8px', padding: '10px' }}>
+      <div style={{ width: '100%', height: 280 }}>
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#ddd" />
+          <AreaChart data={chartData}>
+            <defs>
+              <linearGradient id="colorStat" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.3}/>
+                <stop offset="95%" stopColor="var(--accent)" stopOpacity={0}/>
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.05)" />
             <XAxis dataKey="time" hide />
-            <YAxis allowDecimals={false} domain={[0, 'auto']} />
-            <Tooltip 
-              // This safer formatter prevents crashes on empty points
-              labelFormatter={(label) => {
-                const point = chartData.find(d => d.time === label);
-                return point ? point.displayTime : "Time: " + label;
-              }}
-              contentStyle={{ backgroundColor: '#111', border: 'none', borderRadius: '4px', color: '#fff' }}
+            <YAxis 
+              axisLine={false} 
+              tickLine={false} 
+              tick={{fill: 'var(--muted)', fontSize: 11}}
+              allowDecimals={false} 
             />
-            <Line 
-              type="stepAfter" 
+            <Tooltip content={<CustomTooltip />} />
+            
+            {/* Horizontal Line representing Season Average */}
+            {seasonAvg && (
+              <ReferenceLine 
+                y={seasonAvg} 
+                stroke="var(--warning)" 
+                strokeDasharray="5 5"
+                label={{ position: 'right', value: 'Season Avg', fill: 'var(--warning)', fontSize: 10 }} 
+              />
+            )}
+
+            <Area 
+              type="monotone" 
               dataKey="total" 
-              stroke="#2563eb" 
-              strokeWidth={3} 
-              dot={{ r: 4, fill: '#2563eb', strokeWidth: 2 }} 
-              isAnimationActive={true}
+              stroke="var(--accent)" 
+              strokeWidth={3}
+              fillOpacity={1} 
+              fill="url(#colorStat)"
+              animationDuration={1200}
             />
-          </LineChart>
+          </AreaChart>
         </ResponsiveContainer>
+      </div>
+      
+      <div style={{ marginTop: '16px', display: 'flex', gap: '12px' }}>
+         <div className="stat-summary-chip">
+            <span style={{ fontSize: '0.7rem', color: 'var(--muted)', textTransform: 'uppercase' }}>Current Total</span>
+            <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{chartData[chartData.length-1].total}</div>
+         </div>
       </div>
     </div>
   );
@@ -846,6 +887,19 @@ export default function App() {
   const [insightError, setInsightError] = useState("");
 
   const normalizedOpponentTeamId = useMemo(() => normalizeTeamIdInput(opponentTeamId), [opponentTeamId]);
+  const sortedPlayers = useMemo(() => {
+  return Object.entries(trendsPlayerTimelines).sort(([, a], [, b]) => {
+    const aIsUcsb = a.team_id === UCSB_TEAM_ID;
+    const bIsUcsb = b.team_id === UCSB_TEAM_ID;
+
+    // Prioritize UCSB players at the top
+    if (aIsUcsb && !bIsUcsb) return -1;
+    if (!aIsUcsb && bIsUcsb) return 1;
+
+    // Secondary sort: Alphabetical by player name
+    return (a.player_name || "").localeCompare(b.player_name || "");
+  });
+}, [trendsPlayerTimelines]);
   const teamNameById = useMemo(() => {
     const map = {};
     for (const team of espnTeams) {
@@ -1923,7 +1977,7 @@ export default function App() {
                     onChange={(e) => setSelectedStoryPlayerId(e.target.value)}
                   >
                     <option value="">Choose a player...</option>
-                    {Object.entries(trendsPlayerTimelines).map(([id, data]) => (
+                    {sortedPlayers.map(([id, data]) => (
                       <option key={id} value={id}>
                         {data.player_name} ({resolveTeamName(data.team_id)})
                       </option>

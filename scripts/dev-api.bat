@@ -1,6 +1,5 @@
 
 
-DOS
 @echo off
 
 REM Move to the project root directory (one level up from where this script is located)
