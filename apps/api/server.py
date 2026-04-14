@@ -1251,7 +1251,7 @@ def _infer_pbp_opponent_team_id(rows: Sequence[Dict[str, Any]], ucsb_id: str) ->
 
 
 def _pbp_display_columns(columns: Sequence[str]) -> List[str]:
-    hidden = {"id", "sequence", "wallclock"}
+    hidden = {"id", "sequence", "scoring_play", "shooting_play", "wallclock"}
     filtered = [column for column in columns if column not in hidden]
     preferred = ["team_id", "type", "text"]
     ordered: List[str] = [column for column in preferred if column in filtered]
