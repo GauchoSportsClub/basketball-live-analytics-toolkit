@@ -8,6 +8,7 @@ import {
   pbpAdvancedFiltersEqual,
   validatePbpAdvancedFilters
 } from "./pbpFilters";
+import PlayerComparisonTab from "./components/PlayerComparison"
 
 function CollapseButton({ panelRef, collapsed, onCollapsedChange, title }) {
   return (
@@ -703,6 +704,7 @@ export default function App() {
   const [promptCollapsed, setPromptCollapsed] = useState(false);
   const [savedCollapsed, setSavedCollapsed] = useState(false);
   const [insightsColumnCollapsed, setInsightsColumnCollapsed] = useState(false);
+  const [dataVizCollapsed, setDataVizCollapsed] = useState(false);
 
   const seasonDataPanelRef = useRef();
   const gameDataPanelRef = useRef();
@@ -710,6 +712,7 @@ export default function App() {
   const promptPanelRef = useRef();
   const savedPanelRef = useRef();
   const insightsColumnRef = useRef();
+  const dataVizPanelRef = useRef()
 
   const [opponentTeamId, setOpponentTeamId] = useState("ucr");
   const [espnTeams, setEspnTeams] = useState([]);
@@ -1913,6 +1916,69 @@ export default function App() {
                 )}
               </div>
             </Panel>
+
+            <PanelResizeHandle className = "resize-handle vertical"/>
+
+            <Panel
+              ref = {dataVizPanelRef}
+              defaultSize = {24}
+              minSize = {18}
+              collapsible
+              collapsedSize = {4}
+              onCollapse = {() => setDataVizCollapsed(true)}
+              onExpand = {() => setDataVizCollapsed(false)}
+            >
+              <div className="panel data-viz-panel">
+                {dataVizCollapsed ? (
+                    <div className="panel-collapsed" onClick = {() => dataVizPanelRef.current?.expand()}>
+                        <span>Data Viz</span>
+                    </div>
+                  ) : (
+                      <>
+                         <div className="section-header">
+                           <h2>Data Visualization</h2>
+                           <span>Compare two players</span>
+                           <CollapseButton
+                             panelRef={dataVizPanelRef}
+                             collapsed={dataVizCollapsed}
+                             onCollapsedChange={setDataVizCollapsed}
+                             title="Data Visualization"
+                           />
+                         </div>
+
+                         <div className="tab-tree live-stats-tree">
+                           <div className="branch">
+                             <h3>Team View</h3>
+                             <div className="leaf-list">
+                               <button
+                                 type="button"
+                                 className={`leaf ${activeLiveSide === "ucsb" ? "active" : ""}`}
+                                 onClick={() => setActiveLiveSide("ucsb")}
+                               >
+                                 UCSB
+                               </button>
+
+                               <button
+                                 type="button"
+                                 className={`leaf ${activeLiveSide === "opponent" ? "active" : ""}`}
+                                 onClick={() => setActiveLiveSide("opponent")}
+                                 disabled={!normalizedOpponentTeamId}
+                               >
+                                 Opponent
+                               </button>
+                             </div>
+                           </div>
+                         </div>
+
+                         <PlayerComparisonTab
+                           teamLabel={activeLiveSide === "ucsb" ? ucsbDisplayName : opponentDisplayName}
+                           seasonPlayersData={seasonPlayers[activeLiveSide]}
+                         />
+                      </>
+                  )}
+              </div>
+            </Panel>
+
 
             <PanelResizeHandle className="resize-handle horizontal" />
 
