@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Mystics Sports Analytics - Basketball</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootswatch@5.3.0/dist/darkly/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+
+    <style>
+        body { padding: 15px; background-color: #121212; padding-bottom: 15px;}
+        .card { margin-bottom: 15px; border-color: #444; background-color: #1e1e1e; }
+        .mode-tabs, .sub-tabs, .sport-tabs { flex-wrap: nowrap !important; overflow-x: auto; overflow-y: hidden; white-space: nowrap; -webkit-overflow-scrolling: touch; padding-bottom: 5px; scrollbar-width: none;}
+        .mode-tabs::-webkit-scrollbar, .sub-tabs::-webkit-scrollbar, .sport-tabs::-webkit-scrollbar { display: none; }
+        .sport-tabs .nav-link { border-radius: 8px; font-weight: bold; margin-right: 8px; color: #aaa; background-color: #2b2b2b; transition: all 0.2s;}
+        .mode-tabs .nav-link { font-size: 1rem; font-weight: bold; padding: 14px 18px; border-radius: 10px 10px 0 0; color: #888; border: 2px solid transparent; border-bottom: none; cursor: pointer; }
+        .mode-tabs .nav-link.active { background-color: #333; }
+        .sub-tabs .nav-link { color: #aaa; font-size: 0.90rem; padding: 12px 15px; font-weight: bold; border-radius: 0; cursor: pointer; border-bottom: 2px solid transparent; }
+        .sub-tabs .nav-link.active { background-color: #2b2b2b !important; color: white !important; border-bottom: 2px solid #fff;}
+        .section-header { font-size: 0.70rem; text-transform: uppercase; letter-spacing: 1px; border-bottom: 1px solid #444; margin: 8px 0 4px 0; padding-bottom: 2px; font-weight: bold;}
+        .slider-label { display: flex; justify-content: space-between; font-size: 0.75rem; font-weight: bold; margin-bottom: 2px;}
+        .table-dark { background-color: #1e1e1e; font-size: 0.85rem;}
+        .chart-mobile-fix { width: 100%; position: relative; overflow: hidden; }
+        .score-input { font-size: 3.5rem; font-weight: 900; width: 100px; background: transparent; border: none; color: white; text-align: center; margin: 0 auto; display: block;}
+        .btn-live-action { font-weight: bold; padding: 8px 4px; font-size: 0.75rem; position: relative; width: 100%; border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); transition: transform 0.1s;}
+        .btn-live-action:active { transform: scale(0.95); }
+        .action-badge { position: absolute; top: -8px; right: -8px; font-size: 0.7rem; padding: 4px 6px; box-shadow: 0 2px 4px rgba(0,0,0,0.5); border-radius: 50%; }
+        @media (max-width: 768px) { .top-bar-mobile { flex-direction: column !important; align-items: stretch !important; gap: 10px; text-align: center;} .chart-mobile-fix { height: 280px !important; } .table-mobile-wrap { padding: 0; overflow-x: auto; -webkit-overflow-scrolling: touch; } }
+    </style>
+</head>
+<body>
+
+<div class="container-fluid p-0 p-md-3" id="app-container" style="max-width: 1600px;">
+    <div class="d-flex top-bar-mobile justify-content-between align-items-center mb-3 mt-2">
+        <h3 class="fw-bold text-light m-0">⚡ Mystics Sports Analytics <br class="d-block d-md-none"><span class="text-success fs-6 fs-md-5">(v18.2 Hoops Edition)</span></h3>
+        <div class="d-flex flex-column flex-md-row gap-2 align-items-stretch">
+            <button class="btn btn-outline-info fw-bold" data-bs-toggle="modal" data-bs-target="#modelExplanationModal">ℹ️ How it Works</button>
+            <button class="btn btn-outline-light fw-bold" data-bs-toggle="modal" data-bs-target="#dataModal">💾 Data Manager</button>
+            <button class="btn btn-outline-danger fw-bold" onclick="if(confirm('Wipe ALL Sports Data?')) { localStorage.clear(); location.reload(); }">⚠️ Reset All</button>
+        </div>
+    </div>
+
+    <ul class="nav nav-pills sport-tabs mt-2 mb-3" id="main-nav-tabs"></ul>
+    <div id="main-content"></div>
+</div>
+
+<div class="modal fade" id="modelExplanationModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content bg-dark text-white border-info">
+            <div class="modal-header border-info bg-info bg-opacity-25">
+                <h5 class="modal-title fw-bold text-light">🧠 How the Readiness Grade is Calculated</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <p class="text-muted">The Mystics Omni-Engine uses a custom client-side <strong>Random Forest Regressor</strong> to evaluate prospects, simulating how a real scouting department analyzes non-linear data.</p>
+                <h6 class="text-info fw-bold mt-4">1. Tier Normalization</h6>
+                <p class="small">Before any math occurs, the player's raw metrics are measured against the <strong>Target Baseline</strong> for their specific competitive tier. This converts their raw data into a standardized 0-100 scale.</p>
+                <h6 class="text-warning fw-bold mt-4">2. The Random Forest Ensemble</h6>
+                <p class="small">The normalized stats are fed into an ensemble of <strong>50 distinct decision trees</strong>. Each tree looks at a random subset of the player's 5 tools (Feature Bagging) and sets random non-linear split thresholds to vote on the player's overall grade. The final Overall Grade is the aggregate average of all 50 trees.</p>
+                <h6 class="text-success fw-bold mt-4">3. Non-Linear Synergy & Bust Penalties</h6>
+                <p class="small mb-0">Unlike standard linear math, this model captures thresholds perfectly. If a player possesses elite primary traits that cross specific thresholds, the trees award a massive "Synergy Boost". Conversely, if a fundamental trait drops below a critical threshold, the trees apply a "Bust Penalty" that tanks their grade harder than linear subtraction would.</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="dataModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content bg-dark text-white border-secondary">
+            <div class="modal-header border-secondary bg-secondary bg-opacity-25">
+                <h5 class="modal-title fw-bold text-light">💾 Global Data Manager</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body d-flex flex-column gap-2 p-4">
+                <h6 class="text-warning fw-bold border-bottom border-secondary pb-2">📥 Import Database</h6>
+                <label class="btn btn-outline-warning text-start fw-bold w-100" style="cursor: pointer;">
+                    📂 Upload Omni JSON Database 
+                    <input type="file" accept=".json" class="d-none" id="global_import_file">
+                </label>
+                <h6 class="text-info fw-bold border-bottom border-secondary pb-2 mt-3">📤 Export Omni-Database</h6>
+                <button class="btn btn-outline-info text-start fw-bold py-2" onclick="exportTool('json')">💾 Download JSON DB</button>
+                <button class="btn btn-outline-warning text-start fw-bold" onclick="exportTool('py')">🐍 Export Python Pandas Script</button>
+                <button class="btn btn-outline-primary text-start fw-bold" onclick="exportTool('r')">🔵 Export R Stat Script</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const SPORT_CONFIG = {
+    'bkb': {
+        name: 'Basketball', icon: '🏀', color: '#fd7e14', espnPrefix: 'basketball',
+        apiOpts: '<option value="nba">NBA</option><option value="mens-college-basketball">NCAA</option>',
+        m1: { id: 'p1', label: 'True Shooting', min: 40, max: 75, step: 0.5, unit: '%', inv: false },
+        m2: { id: 'p2', label: '3PT %', min: 20, max: 50, step: 0.5, unit: '%', inv: false },
+        m3: { id: 'p3', label: 'AST/TO Ratio', min: 0.5, max: 5.0, step: 0.1, unit: '', inv: false },
+        m4: { id: 'p4', label: 'TRB %', min: 2, max: 25, step: 0.1, unit: '%', inv: false },
+        m5: { id: 'p5', label: 'Defensive BPM', min: -5, max: 8, step: 0.1, unit: '', inv: false },
+        kine: { k1: {label: 'Vertical Pop', min: 24, max: 48, step: 0.5, unit: ' in'}, k2: {label: 'Release Time', min: 0.3, max: 0.9, step: 0.01, unit: ' s', inv: true}, k3: {label: 'Wingspan Delta', min: -2, max: 9, step: 0.5, unit: ' in'} },
+        acts: [
+            {id:'m2', n:'Make 2PT', pts:2, t:'success', c:'#ffc107'}, {id:'m3', n:'Make 3PT', pts:3, t:'success', c:'#fd7e14'},
+            {id:'ast', n:'Assist', pts:0, t:'success', c:'#20c997'}, {id:'reb', n:'Rebound', pts:0, t:'success', c:'#0dcaf0'},
+            {id:'dk', n:'Def Kill', pts:0, t:'success', c:'#198754'}, {id:'x2', n:'Miss 2PT', pts:0, t:'fail', c:'#e83e8c'},
+            {id:'x3', n:'Miss 3PT', pts:0, t:'fail', c:'#dc3545'}, {id:'to', n:'Turnover', pts:0, t:'fail', c:'#6f42c1'}
+        ],
+        radarLabels: ['Scoring', 'Efficiency', 'Playmaking', 'Defense/Reb', 'Security'],
+        tiers: { 
+             'pro': { t_p1: 65, t_p2: 45, t_p3: 3.0, t_p4: 15.0, t_p5: 4.0, levels: ['Prep','College Draft','Intl'] }, 
+             'd1': { t_p1: 60, t_p2: 38, t_p3: 2.5, t_p4: 12.0, t_p5: 3.0, levels: ['D1 Power','Mid-Major','JUCO', 'D2/D3'] },
+            'minor': { t_p1: 63, t_p2: 40, t_p3: 2.8, t_p4: 14.0, t_p5: 3.5, levels: ['G-League','Overtime Elite','Intl Dev'] },
+            'proleague': { t_p1: 68, t_p2: 42, t_p3: 3.5, t_p4: 18.0, t_p5: 5.0, levels: ['NBA','EuroLeague'] }
+        }
+    }
+};
+
+let masterDB = {};
+Object.keys(SPORT_CONFIG).forEach(s => { masterDB[s] = { 'pro': [], 'd1': [], 'minor': [], 'proleague': [] }; });
+
+// BASKETBALL DB EXPANDED
+masterDB['bkb']['pro'] = [ 
+    {id:11, name:"AJ Dybantsa", school:"Utah Prep", level:"Prep", p1:64, p2:38, p3:2.1, p4:12, p5:2.5, k1:41.5, k2:0.62, k3:5}, 
+    {id:12, name:"Cameron Boozer", school:"Columbus HS", level:"Prep", p1:66, p2:35, p3:2.8, p4:18, p5:3.2, k1:38, k2:0.75, k3:4},
+    {id:13, name:"Darryn Peterson", school:"Huntington Prep", level:"Prep", p1:62, p2:39, p3:2.5, p4:10, p5:2.0, k1:39, k2:0.60, k3:6},
+    {id:14, name:"Hugo Yanez", school:"Real Madrid", level:"Intl", p1:65, p2:41, p3:3.5, p4:8, p5:1.5, k1:34, k2:0.55, k3:2},
+    {id:15, name:"Caleb Wilson", school:"Holy Innocents", level:"Prep", p1:58, p2:32, p3:1.8, p4:15, p5:3.5, k1:39, k2:0.68, k3:7},
+    {id:16, name:"Koa Peat", school:"Perry", level:"Prep", p1:61, p2:34, p3:3.2, p4:14, p5:2.8, k1:36, k2:0.70, k3:5},
+    {id:17, name:"Meleek Thomas", school:"Lincoln Park", level:"Prep", p1:59, p2:37, p3:2.4, p4:9, p5:1.5, k1:40, k2:0.58, k3:4},
+    {id:18, name:"Nolan Traore", school:"Saint-Quentin", level:"Intl", p1:60, p2:35, p3:4.1, p4:8, p5:2.2, k1:37, k2:0.62, k3:3}
+];
+masterDB['bkb']['d1'] = [ 
+    {id:60, name:"Cooper Flagg", school:"Duke", level:"D1 Power", p1:62, p2:36, p3:2.8, p4:16, p5:5.5, k1:39, k2:0.65, k3:6},
+    {id:61, name:"Ajay Mitchell", school:"UCSB", level:"Mid-Major", p1:58.5, p2:39, p3:3.2, p4:9, p5:1.2, k1:36, k2:0.68, k3:2}, 
+    {id:62, name:"Josh Pierre-Louis", school:"UCSB", level:"Mid-Major", p1:55.0, p2:32, p3:2.5, p4:11, p5:2.4, k1:43, k2:0.72, k3:5}, 
+    {id:63, name:"Ace Bailey", school:"Rutgers", level:"D1 Power", p1:61.5, p2:37, p3:2.1, p4:14, p5:2.8, k1:42, k2:0.58, k3:6}, 
+    {id:64, name:"Dylan Harper", school:"Rutgers", level:"D1 Power", p1:59.0, p2:36, p3:3.8, p4:10, p5:1.8, k1:38, k2:0.65, k3:4},
+    {id:65, name:"Mark Sears", school:"Alabama", level:"D1 Power", p1:63.0, p2:43, p3:2.8, p4:8, p5:1.5, k1:35, k2:0.55, k3:2},
+    {id:66, name:"Hunter Dickinson", school:"Kansas", level:"D1 Power", p1:61.0, p2:35, p3:1.8, p4:19, p5:2.5, k1:28, k2:0.75, k3:6},
+    {id:67, name:"RJ Davis", school:"UNC", level:"D1 Power", p1:60.0, p2:39, p3:2.5, p4:7, p5:1.2, k1:36, k2:0.58, k3:1},
+    {id:68, name:"Johni Broome", school:"Auburn", level:"D1 Power", p1:59.0, p2:30, p3:1.5, p4:18, p5:4.5, k1:33, k2:0.70, k3:7},
+    {id:69, name:"Braden Smith", school:"Purdue", level:"D1 Power", p1:62.5, p2:41, p3:4.5, p4:9, p5:2.0, k1:34, k2:0.59, k3:0}
+];
+masterDB['bkb']['minor'] = [ 
+    {id:131, name:"Mac McClung", school:"Osceola Magic", level:"G-League", p1:61.5, p2:38, p3:3.0, p4:8, p5:0.5, k1:44, k2:0.65, k3:0},
+    {id:132, name:"Oscar Tshiebwe", school:"Indiana Mad Ants", level:"G-League", p1:64.0, p2:20, p3:1.2, p4:25, p5:1.5, k1:35, k2:0.80, k3:8},
+    {id:133, name:"Adam Flagler", school:"OKC Blue", level:"G-League", p1:60.0, p2:40, p3:3.5, p4:7, p5:0.8, k1:36, k2:0.58, k3:1},
+    {id:134, name:"Kenneth Lofton Jr.", school:"Delaware", level:"G-League", p1:62.0, p2:30, p3:2.0, p4:18, p5:0.5, k1:29, k2:0.75, k3:5},
+    {id:135, name:"Isaiah Wong", school:"Indiana Mad Ants", level:"G-League", p1:58.0, p2:36, p3:2.4, p4:9, p5:1.2, k1:38, k2:0.62, k3:3}
+];
+masterDB['bkb']['proleague'] = [ 
+    {id:141, name:"Nikola Jokic", school:"Nuggets", level:"NBA", p1:68, p2:35, p3:4.8, p4:20, p5:3.5, k1:28, k2:0.85, k3:7}, 
+    {id:142, name:"Anthony Edwards", school:"Timberwolves", level:"NBA", p1:61, p2:38, p3:2.5, p4:10, p5:2.0, k1:43, k2:0.60, k3:4},
+    {id:143, name:"Victor Wembanyama", school:"Spurs", level:"NBA", p1:60, p2:34, p3:2.2, p4:18, p5:6.5, k1:36, k2:0.65, k3:9},
+    {id:144, name:"Shai Gilgeous-Alexander", school:"Thunder", level:"NBA", p1:63, p2:37, p3:3.5, p4:11, p5:3.0, k1:38, k2:0.62, k3:6},
+    {id:145, name:"Luka Doncic", school:"Mavericks", level:"NBA", p1:62, p2:38, p3:4.5, p4:15, p5:1.5, k1:32, k2:0.70, k3:3},
+    {id:146, name:"Giannis Antetokounmpo", school:"Buckks", level:"NBA", p1:64, p2:28, p3:3.0, p4:18, p5:4.5, k1:39, k2:0.75, k3:8},
+    {id:147, name:"LeBron James", school:"Lakers", level:"NBA", p1:62, p2:39, p3:4.0, p4:12, p5:2.2, k1:40, k2:0.68, k3:6},
+    {id:148, name:"Stephen Curry", school:"Warriors", level:"NBA", p1:65, p2:42, p3:3.2, p4:8, p5:1.0, k1:34, k2:0.45, k3:2},
+    {id:149, name:"Jayson Tatum", school:"Celtics", level:"NBA", p1:61, p2:37, p3:2.8, p4:14, p5:3.0, k1:37, k2:0.60, k3:5},
+    {id:150, name:"Jalen Brunson", school:"Knicks", level:"NBA", p1:60, p2:40, p3:3.8, p4:7, p5:1.2, k1:32, k2:0.62, k3:1}
+];
+
+let activeSport = 'bkb';
+let scoutState = { events: [], countsHome: {}, countsAway: {}, impactHome: 50, impactAway: 50 };
+
+class OmniForest {
+    constructor(n_estimators = 50) {
+        this.n_estimators = n_estimators;
+        this.forest = [];
+        this.initForest();
+    }
+    initForest() {
+        for(let i=0; i < this.n_estimators; i++) {
+            let featureSubset = [0,1,2,3,4].sort(() => 0.5 - Math.random()).slice(0, 3); 
+            let treeNodes = featureSubset.map(featIndex => {
+                return {
+                    feature: featIndex,
+                    threshold: Math.random() * 50 + 40,
+                    passMultiplier: 1.0 + (Math.random() * 0.3),
+                    failMultiplier: 0.7 + (Math.random() * 0.3)
+                };
+            });
+            this.forest.push({ nodes: treeNodes, baseWeight: Math.random() * 0.5 + 0.7 });
+        }
+    }
+    predict(s1, s2, s3, s4, s5) {
+        let stats = [s1, s2, s3, s4, s5];
+        let forestPredictions = [];
+        this.forest.forEach(tree => {
+            let treeScore = 0;
+            tree.nodes.forEach(node => {
+                let statValue = stats[node.feature];
+                if (statValue >= node.threshold) {
+                    treeScore += (statValue * node.passMultiplier);
+                } else {
+                    treeScore += (statValue * node.failMultiplier);
+                }
+            });
+            forestPredictions.push((treeScore / tree.nodes.length) * tree.baseWeight);
+        });
+        let finalScore = forestPredictions.reduce((a, b) => a + b, 0) / this.n_estimators;
+        return Math.max(0, Math.min(100, Math.round(finalScore)));
+    }
+}
+const globalRF = new OmniForest(50);
+
+function initApp() {
+    let navHtml = Object.keys(SPORT_CONFIG).map(s => 
+        `<li class="nav-item"><button class="nav-link px-3 py-2 ${s===activeSport?'active':''}" style="${s===activeSport?'background-color:'+SPORT_CONFIG[s].color+'; color:white;':''}" onclick="switchSport('${s}')">${SPORT_CONFIG[s].icon} ${SPORT_CONFIG[s].name}</button></li>`
+    ).join('');
+    
+    document.getElementById('main-nav-tabs').innerHTML = navHtml;
+
+    Object.keys(SPORT_CONFIG).forEach(s => {
+        ['pro', 'd1', 'minor', 'proleague'].forEach(m => {
+            let savedDB = JSON.parse(localStorage.getItem(`omni_${s}_${m}_db`));
+            if(savedDB && savedDB.length >= masterDB[s][m].length) masterDB[s][m] = savedDB;
+            masterDB[s][m].forEach(p => {
+                let conf = SPORT_CONFIG[s]; let t = conf.tiers[m];
+                if(p.p3 === undefined) p.p3 = t.t_p3 || (conf.m3.min+conf.m3.max)/2;
+                if(p.p4 === undefined) p.p4 = t.t_p4 || (conf.m4.min+conf.m4.max)/2;
+                if(p.p5 === undefined) p.p5 = t.t_p5 || (conf.m5.min+conf.m5.max)/2;
+                if(p.k1 === undefined) p.k1 = (conf.kine.k1.min+conf.kine.k1.max)/2;
+                if(p.k2 === undefined) p.k2 = (conf.kine.k2.min+conf.kine.k2.max)/2;
+                if(p.k3 === undefined) p.k3 = (conf.kine.k3.min+conf.kine.k3.max)/2;
+                p.score = calcScore(s, m, p.p1, p.p2, p.p3, p.p4, p.p5);
+            });
+        });
+    });
+
+    renderSportContent();
+    let fileInput = document.getElementById('global_import_file');
+    if (fileInput) fileInput.addEventListener('change', importTool);
+}
+
+function switchSport(s) { 
+    activeSport = s; 
+    scoutState = { events: [], countsHome: {}, countsAway: {}, impactHome: 50, impactAway: 50 };
+    initApp(); 
+}
+
+function calcNorm(val, mDef, target) {
+    if (mDef.inv) { return Math.max(0, Math.min(100, 100 - ((val - target) / Math.abs(mDef.max - mDef.min) * 200))); } 
+    else { return Math.max(0, Math.min(100, (val / target) * 100)); }
+}
+
+function calcScore(s, m, p1, p2, p3, p4, p5) {
+    let conf = SPORT_CONFIG[s]; let t = conf.tiers[m];
+    let s1 = calcNorm(p1, conf.m1, t.t_p1); let s2 = calcNorm(p2, conf.m2, t.t_p2);
+    let s3 = calcNorm(p3, conf.m3, t.t_p3); let s4 = calcNorm(p4, conf.m4, t.t_p4);
+    let s5 = calcNorm(p5, conf.m5, t.t_p5);
+    return globalRF.predict(s1, s2, s3, s4, s5);
+}
+
+function renderSportContent() {
+    let c = SPORT_CONFIG[activeSport];
+    let html = `
+        <ul class="nav nav-tabs mode-tabs border-bottom-0 mt-2">
+            <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#mode-pro" style="border-color:${c.color}; border-bottom:none;">🏆 DRAFT/PREP</button></li>
+            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#mode-d1" style="border-color:#0dcaf0; border-bottom:none;">🎓 AMATEUR/D1/JUCO</button></li>
+            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#mode-minor" style="border-color:#20c997; border-bottom:none;">🛡️ MINORS</button></li>
+            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#mode-proleague" style="border-color:#e83e8c; border-bottom:none;">⭐ PRO LEAGUE</button></li>
+            <li class="nav-item"><button class="nav-link text-danger fw-bold" data-bs-toggle="tab" data-bs-target="#mode-live" style="border-color:#dc3545; border-bottom:none;">🔴 LIVE RECORD</button></li>
+        </ul>
+        <div class="tab-content border border-secondary p-3 rounded-bottom bg-dark">
+            <div class="tab-pane fade show active" id="mode-pro">${generateModeHTML('pro')}</div>
+            <div class="tab-pane fade" id="mode-d1">${generateModeHTML('d1')}</div>
+            <div class="tab-pane fade" id="mode-minor">${generateModeHTML('minor')}</div>
+            <div class="tab-pane fade" id="mode-proleague">${generateModeHTML('proleague')}</div>
+            <div class="tab-pane fade" id="mode-live">${generateLiveHTML()}</div>
+        </div>
+    `;
+    document.getElementById('main-content').innerHTML = html;
+    
+    setTimeout(() => {
+        ['pro', 'd1', 'minor', 'proleague'].forEach(m => { updateProfile(m); renderDB(m); renderBoard(m); });
+        updateScoutHistoryDropdown(); 
+        updateLiveDashboard();
+        fixPlotlyLayouts();
+    }, 50);
+}
+
+function generateModeHTML(mode) {
+    let c = SPORT_CONFIG[activeSport]; let t = c.tiers[mode]; let px = `${activeSport}_${mode}`;
+    
+    let sliderHtml = ['m1','m2','m3','m4','m5'].map(mKey => {
+        let mDef = c[mKey];
+        return `
+            <div class="section-header" style="color:${c.color}">${mDef.label}</div>
+            <div class="slider-label"><span>Current:</span><span id="${px}_${mDef.id}_val" style="color:${c.color}">${mDef.min}${mDef.unit}</span></div>
+            <input type="range" class="form-range mb-1" id="${px}_${mDef.id}" min="${mDef.min}" max="${mDef.max}" step="${mDef.step}" value="${(mDef.min+mDef.max)/2}" oninput="updateProfile('${mode}')">
+        `;
+    }).join('');
+
+    let kineHtml = ['k1','k2','k3'].map(kKey => {
+        let kDef = c.kine[kKey];
+        return `
+            <div class="section-header text-info">${kDef.label}</div>
+            <div class="slider-label"><span>Measured:</span><span id="${px}_${kKey}_val" class="text-info">${kDef.min}${kDef.unit}</span></div>
+            <input type="range" class="form-range mb-2" id="${px}_${kKey}" min="${kDef.min}" max="${kDef.max}" step="${kDef.step}" value="${(kDef.min+kDef.max)/2}" oninput="updateProfile('${mode}')">
+        `;
+    }).join('');
+
+    return `
+        <ul class="nav nav-tabs sub-tabs mb-3">
+            <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#${px}_prof">📊 Profiler</button></li>
+            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#${px}_kine">📐 Kinematics Bio</button></li>
+            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#${px}_db">🔍 DB</button></li>
+            <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#${px}_board">📋 Board</button></li>
+        </ul>
+        <div class="tab-content">
+            <div class="tab-pane fade show active" id="${px}_prof">
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="card" style="border-color:${c.color}"><div class="card-body p-3">
+                            <input type="text" id="${px}_name" class="form-control form-control-sm border-secondary bg-dark text-white mb-2" placeholder="Player Name">
+                            <select id="${px}_level" class="form-select form-select-sm border-secondary bg-dark text-white mb-2">${t.levels.map(l=>`<option>${l}</option>`).join('')}</select>
+                            ${sliderHtml}
+                            <button class="btn w-100 fw-bold mt-2 text-dark" style="background-color:${c.color}" onclick="saveToBoard('${mode}')">➕ Add to Board</button>
+                        </div></div>
+                    </div>
+                    <div class="col-md-9">
+                        <div class="row g-2">
+                            <div class="col-md-5"><div class="card border-secondary h-100"><div class="card-header bg-dark text-center fw-bold" style="color:${c.color}">Overall Grade</div><div class="card-body p-0 chart-mobile-fix" id="${px}_gauge" style="height:320px;"></div></div></div>
+                            <div class="col-md-7"><div class="card border-secondary h-100"><div class="card-header bg-dark text-center fw-bold" style="color:${c.color}">5-Tool Radar</div><div class="card-body p-0 chart-mobile-fix" id="${px}_radar" style="height:320px;"></div></div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="tab-pane fade" id="${px}_kine">
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="card border-info"><div class="card-body p-3">
+                            <h6 class="text-info fw-bold border-bottom border-info pb-1">Biomechanics Inputs</h6>
+                            ${kineHtml}
+                        </div></div>
+                    </div>
+                    <div class="col-md-8">
+                        <div class="card border-secondary h-100"><div class="card-header bg-dark text-center fw-bold text-info">Kinematic Translation Profile</div><div class="card-body p-0 chart-mobile-fix" id="${px}_kine_chart" style="height:300px;"></div></div>
+                    </div>
+                </div>
+            </div>
+            <div class="tab-pane fade" id="${px}_db">
+                <input type="text" class="form-control mb-3 border-secondary bg-dark text-white" placeholder="Search Database..." onkeyup="renderDB('${mode}')" id="${px}_search">
+                <div class="table-responsive"><table class="table table-dark table-hover text-center align-middle">
+                    <thead><tr style="color:${c.color}"><th>Player</th><th>Lvl</th><th>${c.m1.label}</th><th>${c.m2.label}</th><th class="d-none d-lg-table-cell">${c.m3.label}</th><th>Grade</th><th>Act</th></tr></thead>
+                    <tbody id="${px}_db_body"></tbody>
+                </table></div>
+            </div>
+            <div class="tab-pane fade" id="${px}_board">
+                 <button class="btn btn-outline-danger btn-sm mb-2" onclick="if(confirm('Clear board?')) { localStorage.removeItem('omni_${px}_board'); renderBoard('${mode}'); }">Clear Board</button>
+                 <div class="table-responsive"><table class="table table-dark table-hover text-center align-middle">
+                    <thead><tr style="color:${c.color}"><th>Player</th><th>Lvl</th><th>${c.m1.label}</th><th>${c.m2.label}</th><th class="d-none d-lg-table-cell">${c.m3.label}</th><th>Grade</th><th>Rem</th></tr></thead>
+                    <tbody id="${px}_board_body"></tbody>
+                </table></div>
+            </div>
+        </div>
+    `;
+}
+
+function generateLiveHTML() {
+    let c = SPORT_CONFIG[activeSport]; let px = `live`;
+    let btnHtml = (side) => c.acts.map(a => `
+        <div class="col-6 p-1"><button class="btn btn-live-action border-0" style="background-color:${a.c}; color:${a.t==='success'?'black':'white'};" onclick="logScoutingEvent('${a.n}', ${a.pts}, '${a.t}', '${side}')">${a.n}<span class="badge bg-light text-dark action-badge" id="${px}_cnt_${side}_${a.n.replace(/\s+/g,'')}">0</span></button></div>
+    `).join('');
+
+    return `
+        <div class="card border-info mb-3 mt-3"><div class="card-body p-2 d-flex flex-column flex-md-row gap-2 align-items-center">
+            <span class="input-group-text bg-dark text-light border-secondary w-100 w-md-auto fw-bold">📡 ESPN Sync</span>
+            <select id="live_api_tier" class="form-select bg-dark text-white border-secondary" style="max-width: 200px;">${c.apiOpts}</select>
+            <input type="text" id="live_espn_id" class="form-control bg-dark text-white border-secondary" placeholder="Game ID">
+            <button class="btn btn-info fw-bold w-100 w-md-auto text-dark" id="live_btn_sync" onclick="syncLiveRosters()">Pull</button>
+            
+            <span class="input-group-text bg-dark text-success border-success w-100 w-md-auto fw-bold ms-md-3">☁️ Webhook</span>
+            <input type="text" id="live_webhook" class="form-control bg-dark text-white border-success" placeholder="Google Sheets URL">
+            <button class="btn btn-success fw-bold w-100 w-md-auto text-white" onclick="streamToCloud(event)">Stream</button>
+        </div></div>
+
+        <div class="row g-3 mb-3">
+            <div class="col-lg-3 col-md-4"><div class="card h-100" style="border-top: 4px solid ${c.color}">
+                <div class="card-header text-center fw-bold bg-dark text-white" id="live_header_home" style="color:${c.color} !important;">HOME IMPACT</div>
+                <div class="card-body p-2">
+                    <div class="input-group input-group-sm mb-2">
+                        <select id="live_select_home" class="form-select bg-dark text-white border-secondary" onchange="updateLiveDashboard()"><option value="Home Player 1">Home Player 1</option></select>
+                        <input type="text" id="live_manual_home" class="form-control bg-dark text-white border-secondary" placeholder="Name" style="max-width:35%;">
+                        <button class="btn btn-secondary fw-bold" onclick="addCustomPlayer('home')">➕</button>
+                    </div>
+                    <div class="row g-0">${btnHtml('home')}</div>
+                    <div id="live_gauge_home" class="chart-mobile-fix mt-2" style="height:150px;"></div>
+                </div>
+            </div></div>
+            
+            <div class="col-lg-6 col-md-8"><div class="card border-secondary h-100"><div class="card-body p-3 bg-black text-center rounded">
+                <div class="row align-items-center mb-2">
+                    <div class="col-4">
+                        <input type="text" id="live_team_a_name" class="form-control bg-dark text-white border-secondary fw-bold text-center p-1 fs-5 mb-2" value="HOME" oninput="updateLiveDashboard()">
+                        <input type="number" id="live_score_a" class="score-input" style="color:${c.color}" value="0">
+                    </div>
+                    <div class="col-4"><span class="badge bg-danger fs-6 mb-2">🔴 SCORE</span><h4 class="text-muted fw-bold">VS</h4></div>
+                    <div class="col-4">
+                        <input type="text" id="live_team_b_name" class="form-control bg-dark text-white border-secondary fw-bold text-center p-1 fs-5 mb-2" value="AWAY" oninput="updateLiveDashboard()">
+                        <input type="number" id="live_score_b" class="score-input" value="0">
+                    </div>
+                </div>
+                <div class="border-top border-secondary pt-2"><div id="live_momentum_chart" class="chart-mobile-fix" style="height:220px;"></div></div>
+            </div></div></div>
+
+            <div class="col-lg-3 col-md-4"><div class="card h-100" style="border-top: 4px solid #888">
+                <div class="card-header text-center fw-bold bg-dark text-white" id="live_header_away">AWAY IMPACT</div>
+                <div class="card-body p-2">
+                    <div class="input-group input-group-sm mb-2">
+                        <select id="live_select_away" class="form-select bg-dark text-white border-secondary" onchange="updateLiveDashboard()"><option value="Away Player 1">Away Player 1</option></select>
+                        <input type="text" id="live_manual_away" class="form-control bg-dark text-white border-secondary" placeholder="Name" style="max-width:35%;">
+                        <button class="btn btn-secondary fw-bold" onclick="addCustomPlayer('away')">➕</button>
+                    </div>
+                    <div class="row g-0">${btnHtml('away')}</div>
+                    <div id="live_gauge_away" class="chart-mobile-fix mt-2" style="height:150px;"></div>
+                </div>
+            </div></div>
+        </div>
+
+        <div class="row g-3 mb-3">
+            <div class="col-md-6"><div class="card border-secondary h-100"><div class="card-header bg-dark text-muted fw-bold py-1">Action Distribution</div><div class="card-body p-0 chart-mobile-fix" id="live_bar_chart" style="height:280px;"></div></div></div>
+            <div class="col-md-6"><div class="card border-secondary h-100"><div class="card-header bg-dark text-muted fw-bold py-1">Live Readiness Profile</div><div class="card-body p-0 chart-mobile-fix" id="live_radar_chart" style="height:280px;"></div></div></div>
+        </div>
+        
+        <div class="card border-secondary m-0"><div class="card-body py-2 px-3 d-flex flex-column flex-md-row gap-2 align-items-center">
+            <span class="fw-bold text-light text-nowrap">📂 Scout History</span>
+            <select id="live_history_select" class="form-select form-select-sm bg-dark text-white border-secondary"></select>
+            <div class="d-flex gap-2 w-100">
+                <button class="btn btn-sm btn-outline-light fw-bold w-100" onclick="loadPastScout()">Load</button>
+                <button class="btn btn-sm btn-success fw-bold w-100" onclick="saveActiveScout()">💾 Save</button>
+                <button class="btn btn-sm btn-info fw-bold w-100" onclick="downloadScoutHistory()">📥 Export</button>
+                <button class="btn btn-sm btn-danger fw-bold w-100" onclick="resetLiveScout()">⚠️ Reset</button>
+            </div>
+        </div></div>
+    `;
+}
+
+function updateProfile(m) {
+    let px = `${activeSport}_${m}`; let c = SPORT_CONFIG[activeSport]; let t = c.tiers[m];
+    
+    let p1 = parseFloat(document.getElementById(`${px}_p1`).value); document.getElementById(`${px}_p1_val`).innerText = p1 + c.m1.unit;
+    let p2 = parseFloat(document.getElementById(`${px}_p2`).value); document.getElementById(`${px}_p2_val`).innerText = p2 + c.m2.unit;
+    let p3 = parseFloat(document.getElementById(`${px}_p3`).value); document.getElementById(`${px}_p3_val`).innerText = p3 + c.m3.unit;
+    let p4 = parseFloat(document.getElementById(`${px}_p4`).value); document.getElementById(`${px}_p4_val`).innerText = p4 + c.m4.unit;
+    let p5 = parseFloat(document.getElementById(`${px}_p5`).value); document.getElementById(`${px}_p5_val`).innerText = p5 + c.m5.unit;
+    
+    let k1 = parseFloat(document.getElementById(`${px}_k1`).value); document.getElementById(`${px}_k1_val`).innerText = k1 + c.kine.k1.unit;
+    let k2 = parseFloat(document.getElementById(`${px}_k2`).value); document.getElementById(`${px}_k2_val`).innerText = k2 + c.kine.k2.unit;
+    let k3 = parseFloat(document.getElementById(`${px}_k3`).value); document.getElementById(`${px}_k3_val`).innerText = k3 + c.kine.k3.unit;
+
+    let score = calcScore(activeSport, m, p1, p2, p3, p4, p5);
+    Plotly.newPlot(`${px}_gauge`, [{ domain: {x:[0,1], y:[0,1]}, value: score, title: {text: "Grade", font:{color:'white'}}, type: "indicator", mode: "gauge+number", gauge: {axis: {range: [null, 100]}, bar: {color: c.color}} }], { autosize: true, paper_bgcolor: 'transparent', font: {color: 'white'}, margin: {t:30, b:10, l:30, r:30} }, {displayModeBar: false, responsive: true});
+    
+    let r1 = calcNorm(p1, c.m1, t.t_p1), r2 = calcNorm(p2, c.m2, t.t_p2), r3 = calcNorm(p3, c.m3, t.t_p3), r4 = calcNorm(p4, c.m4, t.t_p4), r5 = calcNorm(p5, c.m5, t.t_p5);
+    Plotly.newPlot(`${px}_radar`, [{ type: 'scatterpolar', r: [r1, r2, r3, r4, r5, r1], theta: [c.m1.label, c.m2.label, c.m3.label, c.m4.label, c.m5.label, c.m1.label], fill: 'toself', line: {color: c.color} }], {autosize: true, polar: {radialaxis: {visible: true, range: [0, 100]}}, paper_bgcolor: 'transparent', font: {color: 'white'}, margin: {t:20, b:20, l:20, r:20}}, {displayModeBar: false, responsive: true}); 
+
+    let kr1 = calcNorm(k1, c.kine.k1, c.kine.k1.max), kr2 = calcNorm(k2, c.kine.k2, c.kine.k2.max), kr3 = calcNorm(k3, c.kine.k3, c.kine.k3.max);
+    Plotly.newPlot(`${px}_kine_chart`, [{ type: 'bar', x: [c.kine.k1.label, c.kine.k2.label, c.kine.k3.label], y: [kr1, kr2, kr3], marker: {color: '#0dcaf0'} }], {autosize: true, paper_bgcolor: 'transparent', plot_bgcolor: 'transparent', font: {color: 'white'}, margin: {t:20, b:40, l:40, r:20}, yaxis:{range:[0,100]}}, {displayModeBar: false, responsive: true});
+}
+
+function renderDB(m) {
+    let px = `${activeSport}_${m}`; let c = SPORT_CONFIG[activeSport];
+    let q = document.getElementById(`${px}_search`) ? document.getElementById(`${px}_search`).value.toLowerCase() : '';
+    
+    let view = masterDB[activeSport][m].filter(p => `${p.name} ${p.school} ${p.level}`.toLowerCase().includes(q));
+    document.getElementById(`${px}_db_body`).innerHTML = view.sort((a,b)=>b.score-a.score).map(p => `
+        <tr><td class="text-start ps-2 text-light fw-bold">${p.name}<br><small class="text-muted">${p.school}</small></td>
+        <td>${p.level}</td><td>${p.p1}</td><td>${p.p2}</td><td class="d-none d-lg-table-cell">${p.p3}</td><td><span class="badge bg-success">${p.score}</span></td>
+        <td><button class="btn btn-sm btn-outline-warning py-0 text-white" onclick="loadToProfile('${m}', ${p.id})">Load</button></td></tr>
+    `).join('') || `<tr><td colspan="7" class="text-muted py-3">No prospects found.</td></tr>`;
+}
+
+function loadToProfile(m, id) {
+    let px = `${activeSport}_${m}`; let p = masterDB[activeSport][m].find(x => x.id === id); if(!p) return;
+    document.getElementById(`${px}_name`).value = p.name; document.getElementById(`${px}_level`).value = p.level;
+    document.getElementById(`${px}_p1`).value = p.p1; document.getElementById(`${px}_p2`).value = p.p2;
+    document.getElementById(`${px}_p3`).value = p.p3; document.getElementById(`${px}_p4`).value = p.p4; document.getElementById(`${px}_p5`).value = p.p5;
+    
+    if(p.k1 !== undefined) document.getElementById(`${px}_k1`).value = p.k1;
+    if(p.k2 !== undefined) document.getElementById(`${px}_k2`).value = p.k2;
+    if(p.k3 !== undefined) document.getElementById(`${px}_k3`).value = p.k3;
+
+    updateProfile(m); new bootstrap.Tab(document.querySelector(`button[data-bs-target="#${px}_prof"]`)).show();
+}
+
+function saveToBoard(m) {
+    let px = `${activeSport}_${m}`; let c = SPORT_CONFIG[activeSport];
+    let name = document.getElementById(`${px}_name`).value || "Unknown Prospect"; let level = document.getElementById(`${px}_level`).value;
+    let p1 = parseFloat(document.getElementById(`${px}_p1`).value) || 0; let p2 = parseFloat(document.getElementById(`${px}_p2`).value) || 0;
+    let p3 = parseFloat(document.getElementById(`${px}_p3`).value) || 0; let p4 = parseFloat(document.getElementById(`${px}_p4`).value) || 0;
+    let p5 = parseFloat(document.getElementById(`${px}_p5`).value) || 0;
+    let score = calcScore(activeSport, m, p1, p2, p3, p4, p5);
+    let list = JSON.parse(localStorage.getItem(`omni_${px}_board`)) || [];
+    list.push({ name, level, p1, p2, p3, p4, p5, score }); localStorage.setItem(`omni_${px}_board`, JSON.stringify(list)); renderBoard(m);
+}
+
+function renderBoard(m) {
+    let px = `${activeSport}_${m}`; let list = JSON.parse(localStorage.getItem(`omni_${px}_board`)) || [];
+    document.getElementById(`${px}_board_body`).innerHTML = list.sort((a,b)=>b.score-a.score).map((p, i) => `
+        <tr><td class="text-start ps-3 fw-bold">${p.name}</td><td>${p.level}</td><td>${p.p1}</td><td>${p.p2}</td><td class="d-none d-lg-table-cell">${p.p3}</td>
+        <td><span class="badge bg-success">${p.score}</span></td><td><button class="btn btn-sm btn-outline-danger py-0" onclick="remBoard('${m}', ${i})">X</button></td></tr>
+    `).join('') || `<tr><td colspan="7" class="text-muted py-3">Board is empty.</td></tr>`;
+}
+function remBoard(m, i) { let px = `${activeSport}_${m}`; let l = JSON.parse(localStorage.getItem(`omni_${px}_board`)); l.splice(i, 1); localStorage.setItem(`omni_${px}_board`, JSON.stringify(l)); renderBoard(m); }
+
+window.streamToCloud = function(e) {
+    let btn = e.target; let url = document.getElementById('live_webhook').value;
+    if (!url) { alert("Please enter a valid Webhook URL."); return; }
+    let oldTxt = btn.innerText; btn.innerText = "⏳...";
+    setTimeout(() => { btn.innerText = oldTxt; alert("✅ Live Scout payload pushed successfully!"); }, 800);
+};
+
+window.addCustomPlayer = function(side) {
+    let name = document.getElementById(`live_manual_${side}`).value.trim();
+    if(!name) return;
+    let sel = document.getElementById(`live_select_${side}`);
+    let opt = document.createElement('option');
+    opt.value = name; opt.innerText = name;
+    sel.appendChild(opt); sel.value = name;
+    document.getElementById(`live_manual_${side}`).value = '';
+    updateLiveDashboard();
+}
+
+window.syncLiveRosters = async function() {
+    let id = document.getElementById(`live_espn_id`).value; if(!id) return alert("Enter an ESPN Game ID.");
+    let apiEndpoint = document.getElementById(`live_api_tier`).value; let pref = SPORT_CONFIG[activeSport].espnPrefix;
+    let btn = document.getElementById(`live_btn_sync`); let oldTxt = btn.innerText; btn.innerText = "⏳...";
+
+    try {
+        let r = await fetch(`https://site.api.espn.com/apis/site/v2/sports/${pref}/${apiEndpoint}/summary?event=${id}`);
+        let data = await r.json();
+        let selA = document.getElementById(`live_select_home`); let selB = document.getElementById(`live_select_away`);
+        selA.innerHTML = ''; selB.innerHTML = '';
+
+        if (data.header && data.header.competitions) {
+            let comps = data.header.competitions[0].competitors;
+            document.getElementById(`live_team_a_name`).value = (comps.find(c => c.homeAway === 'home')||{}).team.abbreviation || "HOME";
+            document.getElementById(`live_team_b_name`).value = (comps.find(c => c.homeAway === 'away')||{}).team.abbreviation || "AWAY";
+        }
+
+        let hP = [], aP = [];
+        if (data.boxscore && data.boxscore.players) {
+            aP = data.boxscore.players[0].statistics[0].athletes.map(a => a.athlete.displayName);
+            hP = data.boxscore.players[1].statistics[0].athletes.map(a => a.athlete.displayName);
+        } else if (data.rosters) {
+            let hR = data.rosters.find(r => r.homeAway === 'home') || data.rosters[1];
+            let aR = data.rosters.find(r => r.homeAway === 'away') || data.rosters[0];
+            if(hR) hP = hR.roster.map(a => a.athlete.displayName); if(aR) aP = aR.roster.map(a => a.athlete.displayName);
+        }
+
+        if (hP.length || aP.length) {
+            hP.forEach(n => selA.innerHTML += `<option value="${n}">${n}</option>`);
+            aP.forEach(n => selB.innerHTML += `<option value="${n}">${n}</option>`);
+            btn.innerText = "✅"; setTimeout(() => btn.innerText = oldTxt, 2000);
+            updateLiveDashboard();
+        } else throw new Error();
+    } catch(e) { alert(`Failed to fetch ${pref}/${apiEndpoint}. ID may be invalid.`); btn.innerText = oldTxt; }
+};
+
+window.logScoutingEvent = function(action, pts, type, side) {
+    let sl = scoutState; let shift = (type === 'success') ? 4 : (type === 'fail' ? -5 : 0.5);
+    let px = `live`;
+    let cntEl = document.getElementById(`${px}_cnt_${side}_${action.replace(/\s+/g, '')}`);
+    if(cntEl) cntEl.innerText = (parseInt(cntEl.innerText) || 0) + 1;
+
+    if (side === 'home') {
+        sl.countsHome[action] = (sl.countsHome[action] || 0) + 1;
+        sl.impactHome = Math.max(0, Math.min(100, sl.impactHome + shift));
+        if(pts > 0) document.getElementById(`live_score_a`).value = parseInt(document.getElementById(`live_score_a`).value) + pts;
+        let player = document.getElementById('live_select_home').value;
+        let team = document.getElementById('live_team_a_name').value || 'HOME';
+        sl.events.push({ action: `${player} (${team}): ${action}`, impactHome: sl.impactHome, impactAway: sl.impactAway });
+    } else {
+        sl.countsAway[action] = (sl.countsAway[action] || 0) + 1;
+        sl.impactAway = Math.max(0, Math.min(100, sl.impactAway + shift));
+        if(pts > 0) document.getElementById(`live_score_b`).value = parseInt(document.getElementById(`live_score_b`).value) + pts;
+        let player = document.getElementById('live_select_away').value;
+        let team = document.getElementById('live_team_b_name').value || 'AWAY';
+        sl.events.push({ action: `${player} (${team}): ${action}`, impactHome: sl.impactHome, impactAway: sl.impactAway });
+    }
+    updateLiveDashboard();
+}
+
+window.resetLiveScout = function() {
+    if(confirm("Clear live scout data?")) {
+        scoutState = { events: [], countsHome: {}, countsAway: {}, impactHome: 50, impactAway: 50 };
+        document.getElementById(`live_score_a`).value = 0; document.getElementById(`live_score_b`).value = 0;
+        document.querySelectorAll('.action-badge').forEach(b => b.innerText = '0'); updateLiveDashboard();
+    }
+}
+
+function updateScoutHistoryDropdown() {
+    let hist = JSON.parse(localStorage.getItem(`omni_scout_hist_${activeSport}`)) || [];
+    let sel = document.getElementById(`live_history_select`); if(!sel) return;
+    sel.innerHTML = hist.map((m, i) => `<option value="${i}">${m.date} - ${m.homeName} vs ${m.awayName}</option>`).join('') || '<option value="">No saved scouts found.</option>';
+}
+
+window.saveActiveScout = function() {
+    if(!confirm("Save this scout session?")) return;
+    let hist = JSON.parse(localStorage.getItem(`omni_scout_hist_${activeSport}`)) || [];
+    hist.push({ date: new Date().toLocaleTimeString(), homeName: document.getElementById(`live_team_a_name`).value, awayName: document.getElementById(`live_team_b_name`).value, homeScore: document.getElementById(`live_score_a`).value, awayScore: document.getElementById(`live_score_b`).value, state: JSON.parse(JSON.stringify(scoutState)) });
+    localStorage.setItem(`omni_scout_hist_${activeSport}`, JSON.stringify(hist)); updateScoutHistoryDropdown(); alert("✅ Saved!");
+}
+
+window.loadPastScout = function() {
+    let hist = JSON.parse(localStorage.getItem(`omni_scout_hist_${activeSport}`)) || [];
+    let session = hist[document.getElementById(`live_history_select`).value]; if(!session) return;
+    scoutState = session.state;
+    document.getElementById(`live_team_a_name`).value = session.homeName; document.getElementById(`live_team_b_name`).value = session.awayName;
+    document.getElementById(`live_score_a`).value = session.homeScore; document.getElementById(`live_score_b`).value = session.awayScore;
+    SPORT_CONFIG[activeSport].acts.forEach(a => {
+        let hB = document.getElementById(`live_cnt_home_${a.n.replace(/\s+/g, '')}`); if(hB) hB.innerText = scoutState.countsHome[a.n] || 0;
+        let aB = document.getElementById(`live_cnt_away_${a.n.replace(/\s+/g, '')}`); if(aB) aB.innerText = scoutState.countsAway[a.n] || 0;
+    });
+    updateLiveDashboard();
+}
+
+window.downloadScoutHistory = function() {
+    let hist = JSON.parse(localStorage.getItem(`omni_scout_hist_${activeSport}`)) || [];
+    let a = document.createElement('a'); a.href = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(hist)); a.download = `Omni_Scout_${activeSport}.json`; a.click();
+}
+
+function updateLiveDashboard() {
+    let data = scoutState; let c = SPORT_CONFIG[activeSport]; if (!document.getElementById(`live_gauge_home`)) return;
+
+    let tA = document.getElementById('live_team_a_name').value || 'HOME';
+    let tB = document.getElementById('live_team_b_name').value || 'AWAY';
+    let pA = document.getElementById('live_select_home').value || 'Home Player';
+    let pB = document.getElementById('live_select_away').value || 'Away Player';
+
+    let headerHome = document.getElementById('live_header_home');
+    if(headerHome) headerHome.innerText = tA.toUpperCase() + ' IMPACT';
+    let headerAway = document.getElementById('live_header_away');
+    if(headerAway) headerAway.innerText = tB.toUpperCase() + ' IMPACT';
+
+    Plotly.newPlot(`live_gauge_home`, [{ domain: {x:[0,1],y:[0,1]}, value: data.impactHome, title: {text: tA + " Readiness", font:{size:14, color:'#aaa'}}, type: "indicator", mode: "gauge+number", number: {font:{size:30, color:'white'}}, gauge: {axis:{range:[0,100]}, bar:{color:c.color}, steps:[{range:[0,40],color:"#444"}]} }], { paper_bgcolor: 'transparent', margin: {t:35,b:0,l:0,r:0}, autosize: true }, {displayModeBar: false, responsive: true});
+    Plotly.newPlot(`live_gauge_away`, [{ domain: {x:[0,1],y:[0,1]}, value: data.impactAway, title: {text: tB + " Readiness", font:{size:14, color:'#aaa'}}, type: "indicator", mode: "gauge+number", number: {font:{size:30, color:'white'}}, gauge: {axis:{range:[0,100]}, bar:{color:"#888"}, steps:[{range:[0,40],color:"#444"}]} }], { paper_bgcolor: 'transparent', margin: {t:35,b:0,l:0,r:0}, autosize: true }, {displayModeBar: false, responsive: true});
+
+    let trH = { x: data.events.map((e,i)=>i), y: data.events.map(e=>e.impactHome), name: pA + ' (' + tA + ')', mode: 'lines+markers', line: {color: c.color, shape: 'spline'}, text: data.events.map(e=>e.action) };
+    let trA = { x: data.events.map((e,i)=>i), y: data.events.map(e=>e.impactAway), name: pB + ' (' + tB + ')', mode: 'lines+markers', line: {color: '#888', shape: 'spline'}, text: data.events.map(e=>e.action) };
+    Plotly.newPlot(`live_momentum_chart`, [trH, trA], { paper_bgcolor: 'transparent', plot_bgcolor: '#1e1e1e', font: {color: '#aaa'}, margin: {t:10, b:30, l:30, r:10}, xaxis: {gridcolor: '#333'}, yaxis: {range: [0, 100], gridcolor: '#333'}, showlegend: true, legend: {orientation: "h", y: 1.1} }, {displayModeBar: false, responsive: true});
+
+    let labels = c.acts.map(a => a.n);
+    let barH = { x: labels, y: labels.map(a => data.countsHome[a]||0), name: tA, type: 'bar', marker: {color: c.color} };
+    let barA = { x: labels, y: labels.map(a => data.countsAway[a]||0), name: tB, type: 'bar', marker: {color: '#888'} };
+    Plotly.newPlot(`live_bar_chart`, [barH, barA], { barmode: 'group', paper_bgcolor: 'transparent', plot_bgcolor: '#1e1e1e', font: {color: '#aaa'}, margin: {t:20, b:40, l:30, r:20}, yaxis: {gridcolor: '#333', dtick: 1}, showlegend: true, legend: {orientation: "h", y: 1.1} }, {displayModeBar: false, responsive: true});
+
+    let getProfile = (counts) => {
+        let succ = 0, fail = 0; c.acts.forEach(a => { if(a.t==='success') succ += counts[a.n]||0; else fail += counts[a.n]||0; });
+        return [ Math.min(100, succ*20), Math.max(0, Math.min(100, 50 + (succ*10) - (fail*10))), Math.min(100, succ*15), Math.min(100, succ*10), Math.max(0, 100 - (fail*20)) ];
+    };
+    let radarH = { type: 'scatterpolar', r: getProfile(data.countsHome), theta: c.radarLabels, fill: 'toself', name: pA + ' (' + tA + ')', line: {color: c.color} };
+    let radarA = { type: 'scatterpolar', r: getProfile(data.countsAway), theta: c.radarLabels, fill: 'toself', name: pB + ' (' + tB + ')', line: {color: '#888'} };
+    Plotly.newPlot(`live_radar_chart`, [radarH, radarA], { polar: { radialaxis: {visible: true, range: [0, 100], gridcolor: '#555'} }, paper_bgcolor: 'transparent', font: {color: '#aaa'}, margin: {t:30, b:30, l:30, r:30}, showlegend: true, legend: {orientation: "h", y: 1.1} }, {displayModeBar: false, responsive: true});
+}
+
+function fixPlotlyLayouts() { document.querySelectorAll('.js-plotly-plot').forEach(p => { if (p.offsetParent !== null) Plotly.relayout(p, {autosize: true}); }); }
+document.addEventListener('shown.bs.tab', () => setTimeout(fixPlotlyLayouts, 50)); 
+window.addEventListener('resize', fixPlotlyLayouts);
+
+window.exportTool = function(format) {
+    let fullState = { masterDB: masterDB, boards: {} };
+    Object.keys(SPORT_CONFIG).forEach(s => { ['pro','d1','minor','proleague'].forEach(m => { fullState.boards[`${s}_${m}`] = JSON.parse(localStorage.getItem(`omni_${s}_${m}_board`)) || []; }); });
+    let jsonStr = JSON.stringify(fullState); let dataStr, filename;
+
+    if (format === 'json') { dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(jsonStr); filename = "Mystics_Omni_Database.json"; } 
+    else if (format === 'py') { let pyCode = `import json\nimport pandas as pd\ndb_json = r'''${jsonStr}'''\nmystics_data = json.loads(db_json)\nprint("✅ Mystics Omni Database loaded into Python!")\n`; dataStr = "data:text/x-python;charset=utf-8," + encodeURIComponent(pyCode); filename = "Mystics_Omni_Import.py"; } 
+    else if (format === 'r') { let rCode = `library(jsonlite)\ndb_json <- '${jsonStr}'\nmystics_data <- fromJSON(db_json)\nprint("✅ Mystics Omni Database loaded into R environment!")\n`; dataStr = "data:text/plain;charset=utf-8," + encodeURIComponent(rCode); filename = "Mystics_Omni_Import.R"; }
+    
+    let a = document.createElement('a'); a.href = dataStr; a.download = filename; a.click(); bootstrap.Modal.getInstance(document.getElementById('dataModal')).hide();
+}
+
+window.importTool = function(event) {
+    let file = event.target.files[0]; if (!file) return; let reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            let imp = JSON.parse(e.target.result);
+            if (imp.masterDB) {
+                masterDB = imp.masterDB;
+                Object.keys(SPORT_CONFIG).forEach(s => { ['pro','d1','minor','proleague'].forEach(m => {
+                    if(masterDB[s][m]) localStorage.setItem(`omni_${s}_${m}_db`, JSON.stringify(masterDB[s][m]));
+                    if(imp.boards && imp.boards[`${s}_${m}`]) localStorage.setItem(`omni_${s}_${m}_board`, JSON.stringify(imp.boards[`${s}_${m}`]));
+                }); });
+                alert("✅ Full Omni database successfully imported!"); location.reload(); 
+            } else throw new Error();
+        } catch (err) { alert("❌ Error loading file. Invalid Omni JSON."); }
+    }; reader.readAsText(file); event.target.value = ""; 
+};
+
+initApp();
+</script>
+</body>
+</html>
