@@ -1,21 +1,14 @@
-@echo off
+#!/usr/bin/env bash
+set -euo pipefail
 
-REM Move to the project root directory
-cd /d "%~dp0.."
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
 
-REM Make sure Python and Web dependencies are set up
-call scripts\ensure-python.bat
-call scripts\ensure-web.bat
+bash scripts/ensure-python.sh
+bash scripts/ensure-web.sh
 
-echo Running API checks...
-.venv\Scripts\python.exe -c "import apps.api.__main__"
-.venv\Scripts\python.exe -m unittest discover -s apps\api\tests -v
-
-echo Running Web tests...
-node apps\web\tests\evidenceNavigation.test.mjs
-node apps\web\tests\pbpAdvancedFilters.test.mjs
-
-echo Building Web project...
-npm --prefix apps\web run build
-
-echo All CI checks completed!
+.venv/bin/python -c "import apps.api.__main__"
+.venv/bin/python -m unittest discover -s apps/api/tests -v
+node apps/web/tests/evidenceNavigation.test.mjs
+node apps/web/tests/pbpAdvancedFilters.test.mjs
+npm --prefix apps/web run build

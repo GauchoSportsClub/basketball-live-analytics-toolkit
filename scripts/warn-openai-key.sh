@@ -1,18 +1,14 @@
-@echo off
+#!/usr/bin/env bash
+set -euo pipefail
 
-REM Move to the project root directory
-cd /d "%~dp0.."
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
 
-REM 1. Check if the .env file exists at all
-if not exist ".env" (
-    echo Warning: .env not found. Insight generation will fail until OPENAI_API_KEY is configured.
-    exit /b 0
-)
+if [[ ! -f ".env" ]]; then
+  echo "Warning: .env not found. Insight generation will fail until OPENAI_API_KEY is configured." >&2
+  exit 0
+fi
 
-REM 2. Search the .env file for the API key using findstr (Windows equivalent of grep)
-REM The regex "^OPENAI_API_KEY=." ensures the line starts with the key and has at least one character after the equals sign
-findstr /R "^OPENAI_API_KEY=." ".env" >nul
-
-if %errorlevel% neq 0 (
-    echo Warning: OPENAI_API_KEY is not configured in .env. /api/insights will fail.
-)
+if ! grep -Eq '^[[:space:]]*OPENAI_API_KEY=[^[:space:]#]' .env; then
+  echo "Warning: OPENAI_API_KEY is not configured in .env. /api/insights will fail." >&2
+fi

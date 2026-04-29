@@ -1,11 +1,9 @@
-@echo off
+#!/usr/bin/env bash
+set -euo pipefail
 
-REM Move to the project root directory
-cd /d "%~dp0.."
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
 
-REM Make sure Web dependencies are set up
-call scripts\ensure-web.bat
-
-REM Run the Web tests
-node apps\web\tests\evidenceNavigation.test.mjs
-node apps\web\tests\pbpAdvancedFilters.test.mjs
+bash scripts/ensure-web.sh
+node apps/web/tests/evidenceNavigation.test.mjs
+node apps/web/tests/pbpAdvancedFilters.test.mjs

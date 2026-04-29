@@ -1,10 +1,8 @@
-@echo off
+#!/usr/bin/env bash
+set -euo pipefail
 
-REM Move to the project root directory
-cd /d "%~dp0.."
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
 
-REM Make sure Python and dependencies are set up
-call scripts\ensure-python.bat
-
-REM Run the Python unit tests
-.venv\Scripts\python.exe -m unittest discover -s apps\api\tests -v
+bash scripts/ensure-python.sh
+exec .venv/bin/python -m unittest discover -s apps/api/tests -v

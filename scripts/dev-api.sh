@@ -1,13 +1,8 @@
+set -euo pipefail
 
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
 
-@echo off
-
-REM Move to the project root directory (one level up from where this script is located)
-cd /d "%~dp0.."
-
-REM Call the other scripts (assuming you translate these to .bat as well)
-call scripts\ensure-python.bat
-call scripts\warn-openai-key.bat
-
-REM Run the Python API using the Windows virtual environment path
-.venv\Scripts\python.exe -m apps.api
+bash scripts/ensure-python.sh
+bash scripts/warn-openai-key.sh
+exec .venv/bin/python -m apps.api

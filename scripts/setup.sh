@@ -1,18 +1,31 @@
-@echo off
+#!/usr/bin/env bash
+set -euo pipefail
 
-REM Move to the project root directory
-cd /d "%~dp0.."
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
 
-REM Run the setup scripts for Python and Web
-call scripts\ensure-python.bat
-call scripts\ensure-web.bat
+# Preflight sequentially so installs don't run concurrently.
+bash scripts/ensure-python.sh
+bash scripts/ensure-web.sh
+bash scripts/warn-openai-key.sh
 
-REM Check if .env is missing AND .env.example exists
-if not exist ".env" (
-    if exist ".env.example" (
-        echo Creating .env from .env.example ...
-        copy ".env.example" ".env" >nul
-    )
-)
+echo "Starting API + Web dev servers ..."
 
-echo Setup complete.
+(.venv/bin/python -m apps.api) &
+api_pid=$!
+
+(npm --prefix apps/web run dev) &
+web_pid=$!
+
+cleanup() {
+  for pid in "$api_pid" "$web_pid"; do
+    if kill -0 "$pid" >/dev/null 2>&1; then
+      kill "$pid" >/dev/null 2>&1 || true
+    fi
+  done
+  wait "$api_pid" "$web_pid" 2>/dev/null || true
+}
+
+trap cleanup INT TERM EXIT
+
+wait "$api_pid" "$web_pid"

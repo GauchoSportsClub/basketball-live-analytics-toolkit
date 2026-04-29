@@ -1,21 +1,31 @@
-@echo off
+#!/usr/bin/env bash
+set -euo pipefail
 
-REM Move to the project root directory
-cd /d "%~dp0.."
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
 
-REM Preflight sequentially so installs don't run concurrently.
-call scripts\ensure-python.bat
-call scripts\ensure-web.bat
-call scripts\warn-openai-key.bat
+# Preflight sequentially so installs don't run concurrently.
+bash scripts/ensure-python.sh
+bash scripts/ensure-web.sh
+bash scripts/warn-openai-key.sh
 
-echo Starting API + Web dev servers ...
+echo "Starting API + Web dev servers ..."
 
-REM Launch the API server in a new window
-REM "cmd /k" ensures the window stays open so you can see the logs
-start "API Server" cmd /k ".venv\Scripts\python.exe -m apps.api"
+(.venv/bin/python -m apps.api) &
+api_pid=$!
 
-REM Launch the Web server in a second new window
-start "Web Server" cmd /k "npm --prefix apps\web run dev"
+(npm --prefix apps/web run dev) &
+web_pid=$!
 
-echo Servers are running in separate windows! 
-echo To stop the servers, simply close those new terminal windows.
+cleanup() {
+  for pid in "$api_pid" "$web_pid"; do
+    if kill -0 "$pid" >/dev/null 2>&1; then
+      kill "$pid" >/dev/null 2>&1 || true
+    fi
+  done
+  wait "$api_pid" "$web_pid" 2>/dev/null || true
+}
+
+trap cleanup INT TERM EXIT
+
+wait "$api_pid" "$web_pid"

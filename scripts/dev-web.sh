@@ -1,10 +1,8 @@
-@echo off
+#!/usr/bin/env bash
+set -euo pipefail
 
-REM Move to the project root directory
-cd /d "%~dp0.."
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$repo_root"
 
-REM Call the web setup script (assuming you translate this one too)
-call scripts\ensure-web.bat
-
-REM Run the web frontend using npm
-npm --prefix apps\web run dev
+bash scripts/ensure-web.sh
+exec npm --prefix apps/web run dev
