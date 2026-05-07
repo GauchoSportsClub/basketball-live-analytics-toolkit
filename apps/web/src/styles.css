@@ -114,6 +114,41 @@ body,
     min-height: 0;
 }
 
+/* Modern Card Container for the Story */
+.player-story-card {
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    padding: 20px;
+    margin: 12px;
+    border: 1px solid var(--line);
+}
+
+/* Custom Tooltip Styling */
+.custom-tooltip {
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(4px);
+    border: 1px solid var(--line);
+    padding: 10px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.custom-tooltip .label {
+    font-weight: 700;
+    font-size: 0.75rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.custom-tooltip .value {
+    font-size: 1.1rem;
+    color: var(--accent);
+    font-weight: 800;
+}
+
 .section-header {
     display: flex;
     justify-content: space-between;
