@@ -802,33 +802,6 @@ function InsightBubble({ insight, onSave, onEvidenceClick, saveText, resolveTeam
   );
 }
 
-function getPointsFromPbp(row) {
-  const text = String(row.text || "").toLowerCase();
-  const playType = String(row.type || "").toLowerCase();
-  const actorId = String(row.athlete_id || "").trim();
-
-  if (!actorId) return 0;
-  if (text.includes("miss")) return 0;
-
-  if (playType === "madefreethrow" || /makes .*free throw/.test(text)) {
-    return 1;
-  }
-
-  if (
-    /makes .*three point/.test(text) ||
-    /makes .*three pointer/.test(text) ||
-    /makes .*3-pt/.test(text) ||
-    /makes .*3pt/.test(text)
-  ) {
-    return 3;
-  }
-
-  if (text.includes("makes")) {
-    return 2;
-  }
-
-  return 0;
-}
 
 function buildScoringEventKey(row, derivedPoints) {
   const actorId = String(row.athlete_id || "").trim();
