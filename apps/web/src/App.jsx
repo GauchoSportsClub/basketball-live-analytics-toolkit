@@ -769,6 +769,13 @@ function InsightBubble({
 
 export default function App() {
   const [isAdvancedView, setIsAdvancedView] = useState(true);
+  const [advancedTabsOpen, setAdvancedTabsOpen] = useState(false);
+  const [advancedTabs, setAdvancedTabs] = useState({
+    seasonData: true,
+    gameData: true,
+    trends: true,
+    sharedNotes: true,
+  });
   const [activeSeasonSide, setActiveSeasonSide] = useState("ucsb");
   const [seasonDataCollapsed, setSeasonDataCollapsed] = useState(false);
   const [gameDataCollapsed, setGameDataCollapsed] = useState(false);
@@ -777,6 +784,8 @@ export default function App() {
   const [savedCollapsed, setSavedCollapsed] = useState(false);
   const [insightsColumnCollapsed, setInsightsColumnCollapsed] = useState(false);
 
+  const advancedTabsButtonRef = useRef(null);
+  const advancedTabsMenuRef = useRef(null);
   const seasonDataPanelRef = useRef();
   const gameDataPanelRef = useRef();
   const trendsPanelRef = useRef();
@@ -786,6 +795,7 @@ export default function App() {
   const sharedNoteSaveTimeoutRef = useRef(null);
   const sharedNoteTextRef = useRef("");
   const sharedNoteDirtyRef = useRef(false);
+  const trendsUpdatingRef = useRef(false);
 
   const [opponentTeamId, setOpponentTeamId] = useState("ucr");
   const [espnTeams, setEspnTeams] = useState([]);
@@ -857,6 +867,8 @@ export default function App() {
   const [trendsCurrentTimestamp, setTrendsCurrentTimestamp] = useState(10 * 60);
   const [trendsCheckpointLabel, setTrendsCheckpointLabel] =
     useState("1st Half 10:00");
+  const [basicTrendsAutoUpdate, setBasicTrendsAutoUpdate] = useState(false);
+  const [basicTrendsAutoSeconds, setBasicTrendsAutoSeconds] = useState(10);
   const [sharedNoteText, setSharedNoteText] = useState("");
   const [sharedNoteUpdatedAt, setSharedNoteUpdatedAt] = useState("");
   const [sharedNoteLoading, setSharedNoteLoading] = useState(true);
@@ -893,6 +905,38 @@ export default function App() {
     return map;
   }, [espnTeams]);
 
+  useEffect(() => {
+    if (!advancedTabsOpen) {
+      return;
+    }
+    const handleMouseDown = (event) => {
+      if (
+        advancedTabsMenuRef.current?.contains(event.target) ||
+        advancedTabsButtonRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+      setAdvancedTabsOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setAdvancedTabsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleMouseDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleMouseDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [advancedTabsOpen]);
+
+  useEffect(() => {
+    if (!isAdvancedView) {
+      setAdvancedTabsOpen(false);
+    }
+  }, [isAdvancedView]);
+
   const loadEspnTeams = useCallback(async () => {
     setTeamsLoading(true);
     setTeamsError("");
@@ -918,6 +962,10 @@ export default function App() {
   useEffect(() => {
     sharedNoteDirtyRef.current = sharedNoteDirty;
   }, [sharedNoteDirty]);
+
+  useEffect(() => {
+    trendsUpdatingRef.current = trendsUpdating;
+  }, [trendsUpdating]);
 
   const loadSharedNote = useCallback(async () => {
     try {
@@ -1191,6 +1239,30 @@ export default function App() {
     trendsCurrentTimestamp,
   ]);
 
+  useEffect(() => {
+    if (!basicTrendsAutoUpdate || isAdvancedView) {
+      return;
+    }
+    const intervalSeconds = Number(basicTrendsAutoSeconds);
+    const safeIntervalSeconds =
+      Number.isFinite(intervalSeconds) && intervalSeconds > 0
+        ? intervalSeconds
+        : 10;
+    const tick = () => {
+      if (!trendsUpdatingRef.current) {
+        updateTrends();
+      }
+    };
+    tick();
+    const intervalId = window.setInterval(tick, safeIntervalSeconds * 1000);
+    return () => window.clearInterval(intervalId);
+  }, [
+    basicTrendsAutoUpdate,
+    basicTrendsAutoSeconds,
+    isAdvancedView,
+    updateTrends,
+  ]);
+
   const resolveTeamName = useCallback(
     (teamId) => {
       const normalized = normalizeTeamIdInput(teamId);
@@ -1353,6 +1425,36 @@ export default function App() {
   const negativePlayerTrends = trendsPlayerMessages.filter(
     (message) => message.tone !== "good",
   );
+  const basicTrendSections = [
+    {
+      key: "team-positive",
+      title: "Team Trends · Positive",
+      tone: "good",
+      items: positiveTeamTrends,
+      emptyText: "No positive team trends at the current checkpoint.",
+    },
+    {
+      key: "team-negative",
+      title: "Team Trends · Negative",
+      tone: "bad",
+      items: negativeTeamTrends,
+      emptyText: "No negative team trends at the current checkpoint.",
+    },
+    {
+      key: "player-positive",
+      title: "Individual Trends · Positive",
+      tone: "good",
+      items: positivePlayerTrends,
+      emptyText: "No positive individual trends at the current checkpoint.",
+    },
+    {
+      key: "player-negative",
+      title: "Individual Trends · Negative",
+      tone: "bad",
+      items: negativePlayerTrends,
+      emptyText: "No negative individual trends at the current checkpoint.",
+    },
+  ];
   const pbpClockHint = useMemo(() => {
     if (pbpAdvancedFiltersDraft.clockMode === "last_n" && !pbpCanApply) {
       return "Enter minutes greater than 0 to apply.";
@@ -1662,6 +1764,23 @@ export default function App() {
     </details>
   );
 
+  const advancedTabOptions = [
+    { key: "seasonData", label: "Season Data" },
+    { key: "gameData", label: "Game Data" },
+    { key: "trends", label: "Trends" },
+    { key: "sharedNotes", label: "Shared Notes" },
+  ];
+  const showSeasonData = advancedTabs.seasonData;
+  const showGameData = advancedTabs.gameData;
+  const showTrends = advancedTabs.trends;
+  const showSharedNotes = advancedTabs.sharedNotes;
+  const hasAdvancedPanels =
+    showSeasonData || showGameData || showTrends || showSharedNotes;
+  const showGameHandle = showGameData && showSeasonData;
+  const showTrendsHandle = showTrends && (showSeasonData || showGameData);
+  const showSharedNotesHandle =
+    showSharedNotes && (showSeasonData || showGameData || showTrends);
+
   const sharedNoteStatus = sharedNoteLoading
     ? "Loading shared notes..."
     : sharedNoteSaving
@@ -1683,7 +1802,9 @@ export default function App() {
           className="shared-note-input"
           value={sharedNoteText}
           onChange={handleSharedNoteChange}
-          placeholder="Type here."
+
+          readOnly={!isAdvancedView}
+          aria-readonly={!isAdvancedView}
         />
       </div>
     </>
@@ -1697,6 +1818,39 @@ export default function App() {
           <h1>Basketball Live Analytics</h1>
         </div>
         <div className="top-app-bar-right">
+          {isAdvancedView ? (
+            <div className="tabs-dropdown">
+              <button
+                type="button"
+                className="neutral tabs-dropdown-toggle"
+                onClick={() => setAdvancedTabsOpen((prev) => !prev)}
+                aria-haspopup="menu"
+                aria-expanded={advancedTabsOpen}
+                ref={advancedTabsButtonRef}
+              >
+                Tabs ▾
+              </button>
+              {advancedTabsOpen ? (
+                <div className="tabs-dropdown-menu" ref={advancedTabsMenuRef}>
+                  {advancedTabOptions.map((option) => (
+                    <label key={option.key} className="tabs-dropdown-item">
+                      <input
+                        type="checkbox"
+                        checked={advancedTabs[option.key]}
+                        onChange={(event) =>
+                          setAdvancedTabs((prev) => ({
+                            ...prev,
+                            [option.key]: event.target.checked,
+                          }))
+                        }
+                      />
+                      <span>{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <span>{isAdvancedView ? "Advanced View" : "Basic View"}</span>
           <button
             type="button"
@@ -1708,16 +1862,18 @@ export default function App() {
         </div>
       </div>
       {isAdvancedView ? (
-        <PanelGroup direction="horizontal">
-          <Panel
-            ref={seasonDataPanelRef}
-            defaultSize={25}
-            minSize={22}
-            collapsible
-            collapsedSize={4}
-            onCollapse={() => setSeasonDataCollapsed(true)}
-            onExpand={() => setSeasonDataCollapsed(false)}
-          >
+        hasAdvancedPanels ? (
+          <PanelGroup direction="horizontal">
+            {showSeasonData ? (
+              <Panel
+                ref={seasonDataPanelRef}
+                defaultSize={25}
+                minSize={22}
+                collapsible
+                collapsedSize={4}
+                onCollapse={() => setSeasonDataCollapsed(true)}
+                onExpand={() => setSeasonDataCollapsed(false)}
+              >
             <div className="panel data-panel">
               {seasonDataCollapsed ? (
                 <div
@@ -1797,19 +1953,23 @@ export default function App() {
                 </>
               )}
             </div>
-          </Panel>
+            </Panel>
+          ) : null}
 
-          <PanelResizeHandle className="resize-handle vertical" />
+            {showGameHandle ? (
+              <PanelResizeHandle className="resize-handle vertical" />
+            ) : null}
 
-          <Panel
-            ref={gameDataPanelRef}
-            defaultSize={25}
-            minSize={22}
-            collapsible
-            collapsedSize={4}
-            onCollapse={() => setGameDataCollapsed(true)}
-            onExpand={() => setGameDataCollapsed(false)}
-          >
+            {showGameData ? (
+              <Panel
+                ref={gameDataPanelRef}
+                defaultSize={25}
+                minSize={22}
+                collapsible
+                collapsedSize={4}
+                onCollapse={() => setGameDataCollapsed(true)}
+                onExpand={() => setGameDataCollapsed(false)}
+              >
             <div className="panel game-panel">
               {gameDataCollapsed ? (
                 <div
@@ -1961,19 +2121,23 @@ export default function App() {
                 </>
               )}
             </div>
-          </Panel>
+            </Panel>
+          ) : null}
 
-          <PanelResizeHandle className="resize-handle vertical" />
+            {showTrendsHandle ? (
+              <PanelResizeHandle className="resize-handle vertical" />
+            ) : null}
 
-          <Panel
-            ref={trendsPanelRef}
-            defaultSize={20}
-            minSize={14}
-            collapsible
-            collapsedSize={4}
-            onCollapse={() => setTrendsCollapsed(true)}
-            onExpand={() => setTrendsCollapsed(false)}
-          >
+            {showTrends ? (
+              <Panel
+                ref={trendsPanelRef}
+                defaultSize={20}
+                minSize={14}
+                collapsible
+                collapsedSize={4}
+                onCollapse={() => setTrendsCollapsed(true)}
+                onExpand={() => setTrendsCollapsed(false)}
+              >
             <div className="panel trends-panel">
               {trendsCollapsed ? (
                 <div
@@ -2120,19 +2284,23 @@ export default function App() {
                 </>
               )}
             </div>
-          </Panel>
+            </Panel>
+          ) : null}
 
-          <PanelResizeHandle className="resize-handle vertical" />
+            {showSharedNotesHandle ? (
+              <PanelResizeHandle className="resize-handle vertical" />
+            ) : null}
 
-          <Panel
-            ref={insightsColumnRef}
-            defaultSize={20}
-            minSize={16}
-            collapsible
-            collapsedSize={4}
-            onCollapse={() => setInsightsColumnCollapsed(true)}
-            onExpand={() => setInsightsColumnCollapsed(false)}
-          >
+            {showSharedNotes ? (
+              <Panel
+                ref={insightsColumnRef}
+                defaultSize={20}
+                minSize={16}
+                collapsible
+                collapsedSize={4}
+                onCollapse={() => setInsightsColumnCollapsed(true)}
+                onExpand={() => setInsightsColumnCollapsed(false)}
+              >
             {insightsColumnCollapsed ? (
               <div
                 className="panel-collapsed"
@@ -2154,9 +2322,24 @@ export default function App() {
                 {sharedNotePanelBody}
               </div>
             )}
-          </Panel>
+              </Panel>
+            ) : null}
 
-        </PanelGroup>
+          </PanelGroup>
+        ) : (
+          <PanelGroup direction="horizontal">
+            <Panel defaultSize={100} minSize={40}>
+              <div className="panel empty-panel">
+                <div className="section-header">
+                  <h2>Advanced View</h2>
+                </div>
+                <p className="placeholder">
+                  Select tabs from the top menu to show panels.
+                </p>
+              </div>
+            </Panel>
+          </PanelGroup>
+        )
       ) : (
         <PanelGroup direction="horizontal" className="basic-view-shell">
           <Panel defaultSize={68} minSize={40}>
@@ -2175,6 +2358,34 @@ export default function App() {
                   <span> No trends snapshot yet.</span>
                 )}
                 {trendsError ? <span className="error"> {trendsError}</span> : null}
+              </div>
+              <div className="table-status trends-auto-update">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={basicTrendsAutoUpdate}
+                    onChange={(event) =>
+                      setBasicTrendsAutoUpdate(event.target.checked)
+                    }
+                  />
+                  Auto update every
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={basicTrendsAutoSeconds}
+                  onChange={(event) => {
+                    const nextValue = Number(event.target.value);
+                    setBasicTrendsAutoSeconds(
+                      Number.isFinite(nextValue) && nextValue > 0
+                        ? nextValue
+                        : 1,
+                    );
+                  }}
+                  disabled={!basicTrendsAutoUpdate}
+                />
+                <span>seconds</span>
               </div>
               <div className="table-status trends-threshold-controls">
                 <label>
@@ -2209,143 +2420,30 @@ export default function App() {
               <div className="table-status">
                 <span>Checkpoint: {trendsCheckpointLabel}</span>
               </div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "8px",
-                  minHeight: 0,
-                  flex: 1,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    minHeight: 0,
-                    paddingLeft: "14px",
-                  }}
-                >
-                  <div style={{ fontSize: "12px", fontWeight: 600, marginBottom: "6px" }}>
-                    Team Trends
-                  </div>
-                  <div
-                    style={{ display: "flex", flexDirection: "column", gap: "8px", minHeight: 0 }}
-                  >
-                    <div style={{ fontSize: "12px", fontWeight: 600 }}>Positive</div>
-                    <div className="table-scroll">
-                      {positiveTeamTrends.length ? (
-                        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                          {positiveTeamTrends.map((message, index) => (
-                            <li
-                              key={`trend_message_basic_positive_${index}`}
-                              style={{
-                                backgroundColor: "rgba(34, 197, 94, 0.18)",
-                                border: "1px solid rgba(34, 197, 94, 0.5)",
-                                borderRadius: "0",
-                                padding: "8px 10px",
-                                marginBottom: "0",
-                                fontSize: "12px",
-                              }}
-                            >
-                              {message.text}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <span>No positive team trends at the current checkpoint.</span>
-                      )}
+              <div className="table-scroll basic-trends-merged">
+                {basicTrendSections.map((section) => (
+                  <div key={section.key} className="basic-trends-section">
+                    <div className="basic-trends-section-title">
+                      {section.title}
                     </div>
-                    <div style={{ fontSize: "12px", fontWeight: 600 }}>Negative</div>
-                    <div className="table-scroll">
-                      {negativeTeamTrends.length ? (
-                        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                          {negativeTeamTrends.map((message, index) => (
-                            <li
-                              key={`trend_message_basic_negative_${index}`}
-                              style={{
-                                backgroundColor: "rgba(239, 68, 68, 0.18)",
-                                border: "1px solid rgba(239, 68, 68, 0.5)",
-                                borderRadius: "0",
-                                padding: "8px 10px",
-                                marginBottom: "0",
-                                fontSize: "12px",
-                              }}
-                            >
-                              {message.text}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <span>No negative team trends at the current checkpoint.</span>
-                      )}
-                    </div>
+                    {section.items.length ? (
+                      <ul className="basic-trends-list">
+                        {section.items.map((message, index) => (
+                          <li
+                            key={`${section.key}_${index}`}
+                            className={`basic-trends-item ${
+                              section.tone === "good" ? "positive" : "negative"
+                            }`}
+                          >
+                            {message.text}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div className="basic-trends-empty">{section.emptyText}</div>
+                    )}
                   </div>
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    minHeight: 0,
-                    paddingLeft: "14px",
-                  }}
-                >
-                  <div style={{ fontSize: "12px", fontWeight: 600, marginBottom: "6px" }}>
-                    Individual Trends
-                  </div>
-                  <div
-                    style={{ display: "flex", flexDirection: "column", gap: "8px", minHeight: 0 }}
-                  >
-                    <div style={{ fontSize: "12px", fontWeight: 600 }}>Positive</div>
-                    <div className="table-scroll">
-                      {positivePlayerTrends.length ? (
-                        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                          {positivePlayerTrends.map((message, index) => (
-                            <li
-                              key={`trend_player_message_basic_positive_${index}`}
-                              style={{
-                                backgroundColor: "rgba(34, 197, 94, 0.18)",
-                                border: "1px solid rgba(34, 197, 94, 0.5)",
-                                borderRadius: "0",
-                                padding: "8px 10px",
-                                marginBottom: "0",
-                                fontSize: "12px",
-                              }}
-                            >
-                              {message.text}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <span>No positive individual trends at the current checkpoint.</span>
-                      )}
-                    </div>
-                    <div style={{ fontSize: "12px", fontWeight: 600 }}>Negative</div>
-                    <div className="table-scroll">
-                      {negativePlayerTrends.length ? (
-                        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                          {negativePlayerTrends.map((message, index) => (
-                            <li
-                              key={`trend_player_message_basic_negative_${index}`}
-                              style={{
-                                backgroundColor: "rgba(239, 68, 68, 0.18)",
-                                border: "1px solid rgba(239, 68, 68, 0.5)",
-                                borderRadius: "0",
-                                padding: "8px 10px",
-                                marginBottom: "0",
-                                fontSize: "12px",
-                              }}
-                            >
-                              {message.text}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <span>No negative individual trends at the current checkpoint.</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
           </Panel>
@@ -2354,7 +2452,6 @@ export default function App() {
             <div className="panel shared-note-basic-panel">
               <div className="section-header">
                 <h2>Shared Notes</h2>
-                <span>Live server-backed note for every client</span>
               </div>
               {sharedNotePanelBody}
             </div>
