@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Lock
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 from urllib.parse import parse_qs, urlparse
 
@@ -76,8 +77,10 @@ _LAST_PBP_UPDATE_AT = 0.0
 _ATHLETE_NAME_CACHE: Dict[str, str] = {}
 
 ESPN_PBP_LEAGUE = "mens-college-basketball"
-ESPN_PBP_GAME_ID = "401809115"
+ESPN_PBP_GAME_ID = "401809104"
 PBP_SCHEMA_VERSION = "espn-pbp-v1"
+SHARED_NOTE_PATH = DATA_ROOT / "shared-note.json"
+_SHARED_NOTE_LOCK = Lock()
 
 # http://sports.core.api.espn.com/v2/sports/basketball/leagues/mens-college-basketball/seasons/2026/teams/2540/events?limit=50&lang=en&region=us
 # https://cdn.espn.com/core/mens-college-basketball/playbyplay?gameid=401826049&xhr=1&render=false&userab=18
@@ -99,6 +102,7 @@ PDF_TEAM_FILES: Dict[str, str] = {
     "ucsd": "ucsd-season-stats.pdf",
     "28": "ucsd-season-stats.pdf",
     "ucr": "ucr-season-stats.pdf",
+    "ucsd": "ucsd-season-stats.pdf",
 }
 PDF_TEAM_NAMES: Dict[str, str] = {
     "ucsb": "UC Santa Barbara",
@@ -106,6 +110,7 @@ PDF_TEAM_NAMES: Dict[str, str] = {
     "ucsd": "UC San Diego",
     "28": "UC San Diego",
     "ucr": "UC Riverside",
+    "ucsd": "UC San Diego"
 }
 
 # Sentinel values for computed columns in PLAYER_TABLE_CONFIG
@@ -322,6 +327,26 @@ def espn_teams_cache_path() -> Path:
 def pbp_data_path(game_id: Optional[str] = None) -> Path:
     gid = (game_id or ESPN_PBP_GAME_ID).strip()
     return DATA_ROOT / f"pbp-{gid}.json"
+
+
+def read_shared_note() -> Dict[str, Any]:
+    payload = read_json_file(SHARED_NOTE_PATH) or {}
+    text = payload.get("text", "")
+    updated_at = payload.get("updated_at", now_iso())
+    return {
+        "text": str(text),
+        "updated_at": str(updated_at),
+    }
+
+
+def write_shared_note(text: str) -> Dict[str, Any]:
+    payload = {
+        "text": str(text),
+        "updated_at": now_iso(),
+    }
+    with _SHARED_NOTE_LOCK:
+        write_json_file(SHARED_NOTE_PATH, payload)
+    return payload
 
 
 def espn_pbp_source_url(league: str, game_id: str, limit: Optional[int] = None, page_index: Optional[int] = None) -> str:
@@ -2868,6 +2893,13 @@ class ApiHandler(BaseHTTPRequestHandler):
             self._send_json(200, {"ok": True, "timestamp": now_iso()})
             return
 
+        if path == "/api/shared-note":
+            try:
+                self._send_json(200, {"ok": True, **read_shared_note()})
+            except Exception as exc:  # noqa: BLE001
+                self._send_json(500, {"error": str(exc)})
+            return
+
         if path == "/api/espn/teams":
             try:
                 query = urlparse(self.path).query.lower()
@@ -2924,12 +2956,28 @@ class ApiHandler(BaseHTTPRequestHandler):
 
         if path == '/api/gameids':
             try:
-                games = fetch_json(f'http://sports.core.api.espn.com/v2/sports/basketball/leagues/mens-college-basketball/seasons/2026/teams/{DEFAULT_UCSB_TEAM_ID}/events?limit=50&lang=en&region=us')
-                r = []
-                for item in games['items']:
-                    r.append(re.search(r'/events/(40\d+)', item.get('$ref', 'NONONO')).group(1))
-                self._send_json(200, {"games": r})
-            except Exception as exc:  # noqa: BLE001
+                events_list = fetch_json(f'http://sports.core.api.espn.com/v2/sports/basketball/leagues/mens-college-basketball/seasons/2026/teams/{DEFAULT_UCSB_TEAM_ID}/events?limit=50&lang=en&region=us')
+                
+                games_with_labels = []
+                for item in events_list.get('items', [])[-15:]:
+                    ref_url = item.get('$ref')
+                    if not ref_url:
+                        continue
+                    
+                    game_id_match = re.search(r'/events/(40\d+)', ref_url)
+                    if game_id_match:
+                        game_id = game_id_match.group(1)
+                        try:
+                            event_data = fetch_json(ref_url)
+                            label = event_data.get('shortName', game_id)
+                            games_with_labels.append({"id": game_id, "label": label})
+                        except:
+                            games_with_labels.append({"id": game_id, "label": game_id})
+                
+                # Sort most recent to top
+                games_with_labels.reverse()
+                self._send_json(200, {"games": games_with_labels})
+            except Exception as exc:
                 self._send_json(500, {"error": str(exc)})
             return
 
@@ -3150,6 +3198,20 @@ class ApiHandler(BaseHTTPRequestHandler):
                 status = exc.response.status_code if exc.response is not None else 502
                 detail = exc.response.text if exc.response is not None else str(exc)
                 self._send_json(status, {"error": detail})
+            except Exception as exc:  # noqa: BLE001
+                self._send_json(500, {"error": str(exc)})
+            return
+
+        if path == "/api/shared-note":
+            try:
+                body = self._read_json()
+                text = body.get("text", "")
+                if not isinstance(text, str):
+                    raise ValueError("text must be a string")
+                payload = write_shared_note(text)
+                self._send_json(200, {"ok": True, **payload})
+            except ValueError as exc:
+                self._send_json(400, {"error": str(exc)})
             except Exception as exc:  # noqa: BLE001
                 self._send_json(500, {"error": str(exc)})
             return
