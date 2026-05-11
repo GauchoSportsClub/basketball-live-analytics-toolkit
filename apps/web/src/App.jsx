@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, LineChart, Line, Legend } from 'recharts';
+import { AreaChart, Bar, BarChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, LineChart, Line, Legend } from 'recharts';
 import {
   buildPbpFilterQuery,
   canApplyPbpAdvancedFilters,
@@ -1334,6 +1334,18 @@ export default function App() {
           }))
       .sort((a,b) => a.name.localeCompare(b.name));
       }, [oppPbpRows, pbpPlayerNameById]);
+  const allPlayersList = useMemo(() => {
+  return [
+    ...ucsbAvailablePlayers.map((player) => ({
+      ...player,
+      team_id: UCSB_TEAM_ID,
+    })),
+    ...oppAvailablePlayers.map((player) => ({
+      ...player,
+      team_id: normalizedOpponentTeamId || "opponent",
+    })),
+  ];
+}, [ucsbAvailablePlayers, oppAvailablePlayers, normalizedOpponentTeamId]);
   const pbpComparisonChartData = useMemo(() => {
       if (!pbpComparePlayer1 || ! pbpComparePlayer2) return [];
       const player1Name = pbpPlayerNameById[pbpComparePlayer1] || "Player 1";
