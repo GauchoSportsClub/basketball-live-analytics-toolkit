@@ -6,3 +6,4 @@ cd "$repo_root"
 
 bash scripts/ensure-web.sh
 exec npm --prefix apps/web run dev
+

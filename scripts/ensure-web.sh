@@ -4,28 +4,47 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-# Preflight sequentially so installs don't run concurrently.
-bash scripts/ensure-python.sh
-bash scripts/ensure-web.sh
-bash scripts/warn-openai-key.sh
+web_dir="apps/web"
+manifest_file="$web_dir/package.json"
+lock_file="$web_dir/package-lock.json"
+stamp_file="$web_dir/node_modules/.install-state"
 
-echo "Starting API + Web dev servers ..."
+if [[ ! -d "$web_dir" ]]; then
+  echo "Error: expected frontend at $web_dir/." >&2
+  exit 1
+fi
 
-(.venv/bin/python -m apps.api) &
-api_pid=$!
+if ! command -v npm >/dev/null 2>&1; then
+  echo "Error: npm not found in PATH." >&2
+  exit 1
+fi
 
-(npm --prefix apps/web run dev) &
-web_pid=$!
+state_sources=("$manifest_file")
+install_cmd=(npm --prefix "$web_dir" install)
+if [[ -f "$lock_file" ]]; then
+  state_sources+=("$lock_file")
+  install_cmd=(npm --prefix "$web_dir" ci)
+fi
 
-cleanup() {
-  for pid in "$api_pid" "$web_pid"; do
-    if kill -0 "$pid" >/dev/null 2>&1; then
-      kill "$pid" >/dev/null 2>&1 || true
-    fi
-  done
-  wait "$api_pid" "$web_pid" 2>/dev/null || true
-}
+current_state="$(
+  if command -v shasum >/dev/null 2>&1; then
+    cat "${state_sources[@]}" | shasum -a 256 | awk '{print $1}'
+  elif command -v sha256sum >/dev/null 2>&1; then
+    cat "${state_sources[@]}" | sha256sum | awk '{print $1}'
+  else
+    echo "Error: no SHA-256 utility found for web dependency state tracking." >&2
+    exit 1
+  fi
+)"
+installed_state=""
 
-trap cleanup INT TERM EXIT
+if [[ -f "$stamp_file" ]]; then
+  installed_state="$(cat "$stamp_file" || true)"
+fi
 
-wait "$api_pid" "$web_pid"
+if [[ ! -d "$web_dir/node_modules" || "$current_state" != "$installed_state" ]]; then
+  echo "Installing web dependencies in $web_dir/ ..."
+  "${install_cmd[@]}"
+  mkdir -p "$(dirname "$stamp_file")"
+  printf "%s" "$current_state" >"$stamp_file"
+fi

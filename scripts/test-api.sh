@@ -6,3 +6,4 @@ cd "$repo_root"
 
 bash scripts/ensure-python.sh
 exec .venv/bin/python -m unittest discover -s apps/api/tests -v
+

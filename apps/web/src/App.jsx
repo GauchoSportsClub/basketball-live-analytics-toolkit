@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import { AreaChart, Bar, BarChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, LineChart, Line, Legend } from 'recharts';
 import {
   buildPbpFilterQuery,
   canApplyPbpAdvancedFilters,
@@ -1007,6 +1007,125 @@ function InsightBubble({
   );
 }
 
+
+function buildScoringEventKey(row, derivedPoints) {
+  const actorId = String(row.athlete_id || "").trim();
+  const period = String(row.period || "").trim();
+  const clock = String(row.clock || "").trim();
+  const playType = String(row.type || "").toLowerCase();
+  const text = String(row.text || "").toLowerCase().trim();
+
+  if (playType === "madefreethrow") {
+    return `${actorId}|${period}|${clock}|ft|${text}`;
+  }
+
+  return `${actorId}|${period}|${clock}|${derivedPoints}`;
+}
+
+function collectPlayerPbpIncrements(row, seenScoringEvents) {
+  const incrementsByPlayer = {};
+  const playType = String(row.type || "");
+  const text = String(row.text || "").toLowerCase();
+  const derivedPoints = getPointsFromPbp(row);
+  const shootingPlay = Boolean(row.shooting_play);
+  const pointsAttempted = Number(row.points_attempted || 0);
+  const actorId = String(row.athlete_id || "").trim();
+  const assistId = String(row.assist_athlete_id || "").trim();
+
+  const isNewScoringEvent =
+    derivedPoints > 0 &&
+    (() => {
+      const eventKey = buildScoringEventKey(row, derivedPoints);
+      if (seenScoringEvents.has(eventKey)) return false;
+      seenScoringEvents.add(eventKey);
+      return true;
+    })();
+
+  if (actorId) {
+    incrementsByPlayer[actorId] = {};
+
+    if (isNewScoringEvent) {
+      incrementsByPlayer[actorId].points = derivedPoints;
+    }
+
+    if (shootingPlay && (pointsAttempted === 2 || pointsAttempted === 3)) {
+      incrementsByPlayer[actorId].field_goals_attempted = 1;
+      if (pointsAttempted === 3) {
+        incrementsByPlayer[actorId].three_pointers_attempted = 1;
+      }
+    }
+
+    if (isNewScoringEvent && (derivedPoints === 2 || derivedPoints === 3)) {
+      incrementsByPlayer[actorId].field_goals_made = 1;
+      if (derivedPoints === 3) {
+        incrementsByPlayer[actorId].three_pointers_made = 1;
+      }
+    }
+
+    if (text.includes("free throw")) {
+      incrementsByPlayer[actorId].free_throws_attempted = 1;
+      if (isNewScoringEvent && derivedPoints === 1) {
+        incrementsByPlayer[actorId].free_throws_made = 1;
+      }
+    }
+
+    if (playType === "Offensive Rebound") {
+      incrementsByPlayer[actorId].offensive_rebounds = 1;
+      incrementsByPlayer[actorId].rebounds = 1;
+    } else if (playType === "Defensive Rebound") {
+      incrementsByPlayer[actorId].defensive_rebounds = 1;
+      incrementsByPlayer[actorId].rebounds = 1;
+    }
+
+    if (playType === "Steal") incrementsByPlayer[actorId].steals = 1;
+    if (playType === "Block Shot") incrementsByPlayer[actorId].blocks = 1;
+    if (playType.toLowerCase().includes("turnover")) incrementsByPlayer[actorId].turnovers = 1;
+    if (playType.toLowerCase().includes("foul")) incrementsByPlayer[actorId].fouls = 1;
+  }
+
+  if (assistId && isNewScoringEvent) {
+    if (!incrementsByPlayer[assistId]) incrementsByPlayer[assistId] = {};
+    incrementsByPlayer[assistId].assists =
+      Number(incrementsByPlayer[assistId].assists || 0) + 1;
+  }
+
+  return incrementsByPlayer;
+}
+
+function parseClock(clockValue) {
+    const clock = String(clockValue || "").trim();
+    const match = clock.match(/^(\d+):(\d{2})$/);
+    if (!match) return 0;
+    const minutes = Number(match[1]);
+    const seconds = Number(match[2]);
+    return minutes *60 + seconds;
+    }
+
+function parsePeriod(periodValue) {
+    const raw = String(periodValue || "").toLowerCase().trim();
+    if (!raw) return 1;
+    if (raw.includes("1")) return 1;
+    if (raw.includes("2")) return 2;
+    if (raw.includes("3")) return 3;
+    if (raw.includes("4")) return 4;
+    const numeric = Number(raw);
+    return Number.isFinite(numeric) && numeric >0 ? numeric : 1;
+    }
+
+function getElapsedGameMinute(row) {
+    const period = parsePeriod(row.period || 1);
+    const clockSeconds = parseClock(row.clock);
+    const Regulation_Period_Seconds = 20 * 60
+    const Overtime_Seconds = 5 * 60
+    let elapsedSeconds = 0;
+    if (period <= 2) {
+        elapsedSeconds = (period - 1) * Regulation_Period_Seconds + (Regulation_Period_Seconds - clockSeconds);
+        } else {
+            elapsedSeconds = 2 * Regulation_Period_Seconds + (period - 3) * Overtime_Seconds + (Overtime_Seconds - clockSeconds);
+            }
+    return Math.floor(elapsedSeconds / 60)
+    }
+
 export default function App() {
   const [isAdvancedView, setIsAdvancedView] = useState(true);
   const [activeSeasonSide, setActiveSeasonSide] = useState("ucsb");
@@ -1110,6 +1229,10 @@ export default function App() {
   const [sharedNoteDirty, setSharedNoteDirty] = useState(false);
   const [sharedNoteError, setSharedNoteError] = useState("");
 
+  const [pbpComparePlayer1, setPbpComparePlayer1] = useState("");
+  const [pbpComparePlayer2, setPbpComparePlayer2] = useState("");
+  const [pbpCompareMetric, setPbpCompareMetric] = useState("points");
+
   const [prompt, setPrompt] = useState("");
   const [contextEnabled, setContextEnabled] = useState({
     ucsbTeam: true,
@@ -1148,36 +1271,134 @@ export default function App() {
     return map;
   }, [espnTeams]);
 
-  const allPlayersList = useMemo(() => {
-    const list = [];
-    const datasets = [
-      { rows: liveStats?.ucsb_players?.rows || [], team_id: UCSB_TEAM_ID },
-      { rows: liveStats?.opponent_players?.rows || [], team_id: normalizedOpponentTeamId }
-    ];
-
-    for (const { rows, team_id } of datasets) {
-      for (const row of rows) {
-        const rowKey = String(row?.row_key || "");
-        const playerName = String(row?.Player || "").trim();
-        const match = rowKey.match(/_player_([A-Za-z0-9_-]+)$/);
-        if (!match || !playerName) continue;
-        
-        list.push({
-          id: match[1],
-          name: playerName,
-          team_id: team_id
-        });
+  const pbpPlayerNameById = useMemo(() => {
+      const map = {};
+      const datasets = [
+          liveStats.ucsb_players?.rows || [],
+          liveStats.opponent_players?.rows || []
+          ];
+      for (const rows of datasets) {
+        for (const row of rows) {
+            const rowKey = String(row?.row_key || "");
+            const playerName = String(row?.Player || "").trim();
+            const match = rowKey.match(/_player_([A-Za-z0-9_-]+)$/);
+            if (!match || !playerName) continue;
+            map[match[1]] = playerName;
+            }
       }
-    }
-
-    return list.sort((a, b) => {
-      const aIsUcsb = a.team_id === UCSB_TEAM_ID;
-      const bIsUcsb = b.team_id === UCSB_TEAM_ID;
-      if (aIsUcsb && !bIsUcsb) return -1;
-      if (!aIsUcsb && bIsUcsb) return 1;
-      return (a.name || "").localeCompare(b.name || "");
+      return map;
+      }, [liveStats]);
+  const ucsbPbpRows = useMemo(() => {
+    return (pbpData.rows || []).filter((row) => {
+        const normalized = normalizeTeamIdInput(String(row.team_id || "").trim());
+        return normalized === normalizeTeamIdInput(UCSB_TEAM_ID) || normalized === "ucsb";
     });
-  }, [liveStats, normalizedOpponentTeamId]);
+    }, [pbpData.rows]);
+
+  const oppPbpRows = useMemo(() => {
+      return (pbpData.rows || []).filter((row) => {
+          const normalized = normalizeTeamIdInput(String(row.team_id || "").trim());
+          return (
+            normalized === normalizeTeamIdInput(normalizedOpponentTeamId) ||
+            normalized === "opponent"
+        );
+    });
+  }, [pbpData.rows, normalizedOpponentTeamId]);
+  const ucsbAvailablePlayers = useMemo (() => {
+      const ids = new Set();
+      for (const row of ucsbPbpRows) {
+          const actorId = String(row.athlete_id || "").trim();
+          const assistId = String(row.assist_athlete_id || "").trim();
+          if (actorId) ids.add(actorId);
+          if (assistId) ids.add(assistId);
+          }
+      return Array.from(ids)
+      .map((id) => ({
+          id,
+          name: pbpPlayerNameById[id] || `Player ${id}`
+          }))
+      .sort((a,b) => a.name.localeCompare(b.name));
+      }, [ucsbPbpRows, pbpPlayerNameById]);
+  const oppAvailablePlayers = useMemo (() => {
+      const ids = new Set();
+      for (const row of oppPbpRows) {
+          const actorId = String(row.athlete_id || "").trim();
+          const assistId = String(row.assist_athlete_id || "").trim();
+          if (actorId) ids.add(actorId);
+          if (assistId) ids.add(assistId);
+          }
+      return Array.from(ids)
+      .map((id) => ({
+          id,
+          name: pbpPlayerNameById[id] || `Player ${id}`
+          }))
+      .sort((a,b) => a.name.localeCompare(b.name));
+      }, [oppPbpRows, pbpPlayerNameById]);
+  const allPlayersList = useMemo(() => {
+  return [
+    ...ucsbAvailablePlayers.map((player) => ({
+      ...player,
+      team_id: UCSB_TEAM_ID,
+    })),
+    ...oppAvailablePlayers.map((player) => ({
+      ...player,
+      team_id: normalizedOpponentTeamId || "opponent",
+    })),
+  ];
+}, [ucsbAvailablePlayers, oppAvailablePlayers, normalizedOpponentTeamId]);
+  const pbpComparisonChartData = useMemo(() => {
+      if (!pbpComparePlayer1 || ! pbpComparePlayer2) return [];
+      const player1Name = pbpPlayerNameById[pbpComparePlayer1] || "Player 1";
+      const player2Name = pbpPlayerNameById[pbpComparePlayer2] || "Player 2";
+
+      let total1 = 0;
+      let total2 = 0;
+
+      const minuteMap = new Map();
+      const seenScoringEvents = new Set();
+      for (const row of pbpData.rows || []) {
+          const incrementsByPlayer = collectPlayerPbpIncrements(row, seenScoringEvents);
+
+          total1 += Number(incrementsByPlayer[pbpComparePlayer1]?.[pbpCompareMetric] || 0);
+          total2 += Number(incrementsByPlayer[pbpComparePlayer2]?.[pbpCompareMetric] || 0);
+          const minute = getElapsedGameMinute(row);
+
+          if (!Number.isFinite(minute)) continue;
+
+          minuteMap.set(minute, {
+              minute,
+              [player1Name]: total1,
+              [player2Name]: total2
+          });
+      }
+      if (minuteMap.size === 0) return [];
+      const maxMinute = Math.max(...minuteMap.keys());
+      if (!Number.isFinite(maxMinute)) return [];
+      const output = [];
+      let last1 = 0;
+      let last2 = 0;
+
+      for (let minute = 0; minute <= maxMinute; minute += 1) {
+          const row = minuteMap.get(minute);
+          if (row) {
+              last1 = row[player1Name];
+              last2 = row[player2Name];
+          }
+          output.push({
+              minute,
+              minuteLabel: `${minute}`,
+              [player1Name]: last1,
+              [player2Name]: last2
+          });
+      }
+  return output;
+  }, [
+      pbpData.rows,
+      pbpComparePlayer1,
+      pbpComparePlayer2,
+      pbpCompareMetric,
+      pbpPlayerNameById
+      ]);
 
   const loadEspnTeams = useCallback(async () => {
     setTeamsLoading(true);
