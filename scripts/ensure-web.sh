@@ -4,47 +4,45 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-web_dir="apps/web"
-manifest_file="$web_dir/package.json"
-lock_file="$web_dir/package-lock.json"
-stamp_file="$web_dir/node_modules/.install-state"
+WEB_DIR="apps/web"
+MANIFEST_FILE="$WEB_DIR/package.json"
+LOCK_FILE="$WEB_DIR/package-lock.json"
+STAMP_FILE="$WEB_DIR/node_modules/.install-state"
 
-if [[ ! -d "$web_dir" ]]; then
-  echo "Error: expected frontend at $web_dir/." >&2
+if [ ! -d "$WEB_DIR" ]; then
+  echo "Error: expected frontend at $WEB_DIR/."
   exit 1
 fi
 
 if ! command -v npm >/dev/null 2>&1; then
-  echo "Error: npm not found in PATH." >&2
+  echo "Error: npm not found in PATH."
   exit 1
 fi
 
-state_sources=("$manifest_file")
-install_cmd=(npm --prefix "$web_dir" install)
-if [[ -f "$lock_file" ]]; then
-  state_sources+=("$lock_file")
-  install_cmd=(npm --prefix "$web_dir" ci)
+if [ -f "$LOCK_FILE" ]; then
+  INSTALL_CMD=(npm --prefix "$WEB_DIR" ci)
+  CURRENT_STATE="$(shasum -a 256 "$MANIFEST_FILE" "$LOCK_FILE" | awk '{print $1}' | tr -d '\n')"
+else
+  INSTALL_CMD=(npm --prefix "$WEB_DIR" install)
+  CURRENT_STATE="$(shasum -a 256 "$MANIFEST_FILE" | awk '{print $1}')"
 fi
 
-current_state="$(
-  if command -v shasum >/dev/null 2>&1; then
-    cat "${state_sources[@]}" | shasum -a 256 | awk '{print $1}'
-  elif command -v sha256sum >/dev/null 2>&1; then
-    cat "${state_sources[@]}" | sha256sum | awk '{print $1}'
-  else
-    echo "Error: no SHA-256 utility found for web dependency state tracking." >&2
-    exit 1
-  fi
-)"
-installed_state=""
-
-if [[ -f "$stamp_file" ]]; then
-  installed_state="$(cat "$stamp_file" || true)"
+INSTALLED_STATE=""
+if [ -f "$STAMP_FILE" ]; then
+  INSTALLED_STATE="$(cat "$STAMP_FILE")"
 fi
 
-if [[ ! -d "$web_dir/node_modules" || "$current_state" != "$installed_state" ]]; then
-  echo "Installing web dependencies in $web_dir/ ..."
-  "${install_cmd[@]}"
-  mkdir -p "$(dirname "$stamp_file")"
-  printf "%s" "$current_state" >"$stamp_file"
+NEEDS_INSTALL=0
+if [ ! -d "$WEB_DIR/node_modules" ]; then
+  NEEDS_INSTALL=1
+fi
+if [ "$CURRENT_STATE" != "$INSTALLED_STATE" ]; then
+  NEEDS_INSTALL=1
+fi
+
+if [ "$NEEDS_INSTALL" = "1" ]; then
+  echo "Installing web dependencies in $WEB_DIR/ ..."
+  "${INSTALL_CMD[@]}"
+  mkdir -p "$WEB_DIR/node_modules"
+  echo "$CURRENT_STATE" > "$STAMP_FILE"
 fi

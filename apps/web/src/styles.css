@@ -68,6 +68,13 @@ body,
     align-items: center;
     gap: 10px;
     min-width: 0;
+    flex: 0 1 auto;
+}
+
+.top-app-bar-middle {
+    flex: 1 1 auto;
+    display: flex;
+    justify-content: center;
 }
 
 .logo-slot {
@@ -93,11 +100,57 @@ body,
     gap: 10px;
     flex-wrap: wrap;
     justify-content: flex-end;
+    flex: 0 0 auto;
 }
 
 .top-app-bar-right span {
     font-size: 0.9rem;
     color: var(--muted);
+}
+
+.top-bar-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.top-bar-controls-main {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.top-bar-controls label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.top-bar-controls .label-inline {
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+.top-bar-controls select {
+    padding: var(--btn-pad-y) var(--btn-pad-x);
+    font-size: var(--btn-font-size);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel);
+    color: var(--ink);
+}
+
+.top-bar-auto-refresh {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.top-bar-auto-refresh input[type="number"] {
+    width: 76px;
 }
 
 .tabs-dropdown {
@@ -143,6 +196,41 @@ body,
     display: flex;
     flex-direction: column;
     min-height: 0;
+}
+
+/* Modern Card Container for the Story */
+.player-story-card {
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    padding: 20px;
+    margin: 12px;
+    border: 1px solid var(--line);
+}
+
+/* Custom Tooltip Styling */
+.custom-tooltip {
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(4px);
+    border: 1px solid var(--line);
+    padding: 10px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.custom-tooltip .label {
+    font-weight: 700;
+    font-size: 0.75rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.custom-tooltip .value {
+    font-size: 1.1rem;
+    color: var(--accent);
+    font-weight: 800;
 }
 
 .section-header {
