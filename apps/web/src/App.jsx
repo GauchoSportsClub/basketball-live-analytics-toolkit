@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { AreaChart, Bar, BarChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, LineChart, Line, Legend } from 'recharts';
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import {
   buildPbpFilterQuery,
   canApplyPbpAdvancedFilters,
@@ -97,20 +97,23 @@ function PlayerPerformanceStory({ playerTimeline, teamName, seasonAvg }) {
   const [activeStat, setActiveStat] = useState("points");
 
   if (!playerTimeline || !playerTimeline.stats) {
-    return <div className="placeholder" style={{ padding: '40px', textAlign: 'center' }}>
-      Select a player to visualize their game impact.
-    </div>;
+    return (
+      <div className="placeholder" style={{ padding: "40px", textAlign: "center" }}>
+        Select a player to visualize their game impact.
+      </div>
+    );
   }
 
-  const statEntry = playerTimeline.stats.find(s => s.stat_key === activeStat);
-  
+  const statEntry = playerTimeline.stats.find((s) => s.stat_key === activeStat);
   const chartData = [
     { time: 0, total: 0, displayTime: "0:00" },
-    ...(statEntry?.events || []).map(event => ({
+    ...(statEntry?.events || []).map((event) => ({
       time: event.timestamp || 0,
       total: event.total || 0,
-      displayTime: `${event.period}H ${Math.floor(event.timestamp / 60)}:${String(event.timestamp % 60).padStart(2, '0')}`
-    }))
+      displayTime: `${event.period}H ${Math.floor(event.timestamp / 60)}:${String(
+        event.timestamp % 60,
+      ).padStart(2, "0")}`,
+    })),
   ];
 
   const CustomTooltip = ({ active, payload }) => {
@@ -118,7 +121,9 @@ function PlayerPerformanceStory({ playerTimeline, teamName, seasonAvg }) {
       return (
         <div className="custom-tooltip">
           <span className="label">{payload[0].payload.displayTime}</span>
-          <span className="value">{payload[0].value} {activeStat.toUpperCase()}</span>
+          <span className="value">
+            {payload[0].value} {activeStat.toUpperCase()}
+          </span>
         </div>
       );
     }
@@ -127,71 +132,110 @@ function PlayerPerformanceStory({ playerTimeline, teamName, seasonAvg }) {
 
   return (
     <div className="player-story-card">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          marginBottom: "24px",
+        }}
+      >
         <div>
-          <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: 'var(--ink)' }}>
+          <h3
+            style={{
+              margin: 0,
+              fontSize: "1.2rem",
+              fontWeight: 800,
+              color: "var(--ink)",
+            }}
+          >
             {playerTimeline.player_name}
           </h3>
-          <span style={{ color: 'var(--muted)', fontSize: '0.85rem', fontWeight: 500 }}>{teamName}</span>
+          <span
+            style={{ color: "var(--muted)", fontSize: "0.85rem", fontWeight: 500 }}
+          >
+            {teamName}
+          </span>
         </div>
-        <select 
-          value={activeStat} 
-          onChange={(e) => setActiveStat(e.target.value)} 
+        <select
+          value={activeStat}
+          onChange={(e) => setActiveStat(e.target.value)}
           className="stat-selector"
-          style={{ padding: '6px 12px', borderRadius: '10px', background: 'var(--panel-strong)' }}
+          style={{
+            padding: "6px 12px",
+            borderRadius: "10px",
+            background: "var(--panel-strong)",
+          }}
         >
           <option value="points">Points</option>
           <option value="rebounds">Rebounds</option>
           <option value="assists">Assists</option>
         </select>
       </div>
-      
-      <div style={{ width: '100%', height: 280 }}>
+      <div style={{ width: "100%", height: 280 }}>
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={chartData}>
             <defs>
               <linearGradient id="colorStat" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.3}/>
-                <stop offset="95%" stopColor="var(--accent)" stopOpacity={0}/>
+                <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="var(--accent)" stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(0,0,0,0.05)" />
+            <CartesianGrid
+              strokeDasharray="3 3"
+              vertical={false}
+              stroke="rgba(0,0,0,0.05)"
+            />
             <XAxis dataKey="time" hide />
-            <YAxis 
-              axisLine={false} 
-              tickLine={false} 
-              tick={{fill: 'var(--muted)', fontSize: 11}}
-              allowDecimals={false} 
+            <YAxis
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: "var(--muted)", fontSize: 11 }}
+              allowDecimals={false}
             />
             <Tooltip content={<CustomTooltip />} />
-            
+
             {seasonAvg && (
-              <ReferenceLine 
-                y={seasonAvg} 
-                stroke="var(--warning)" 
+              <ReferenceLine
+                y={seasonAvg}
+                stroke="var(--warning)"
                 strokeDasharray="5 5"
-                label={{ position: 'right', value: 'Season Avg', fill: 'var(--warning)', fontSize: 10 }} 
+                label={{
+                  position: "right",
+                  value: "Season Avg",
+                  fill: "var(--warning)",
+                  fontSize: 10,
+                }}
               />
             )}
 
-            <Area 
-              type="monotone" 
-              dataKey="total" 
-              stroke="var(--accent)" 
+            <Area
+              type="monotone"
+              dataKey="total"
+              stroke="var(--accent)"
               strokeWidth={3}
-              fillOpacity={1} 
+              fillOpacity={1}
               fill="url(#colorStat)"
               animationDuration={1200}
             />
           </AreaChart>
         </ResponsiveContainer>
       </div>
-      
-      <div style={{ marginTop: '16px', display: 'flex', gap: '12px' }}>
-         <div className="stat-summary-chip">
-            <span style={{ fontSize: '0.7rem', color: 'var(--muted)', textTransform: 'uppercase' }}>Current Total</span>
-            <div style={{ fontSize: '1.1rem', fontWeight: 700 }}>{chartData[chartData.length-1].total}</div>
-         </div>
+      <div style={{ marginTop: "16px", display: "flex", gap: "12px" }}>
+        <div className="stat-summary-chip">
+          <span
+            style={{
+              fontSize: "0.7rem",
+              color: "var(--muted)",
+              textTransform: "uppercase",
+            }}
+          >
+            Current Total
+          </span>
+          <div style={{ fontSize: "1.1rem", fontWeight: 700 }}>
+            {chartData[chartData.length - 1].total}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -199,31 +243,42 @@ function PlayerPerformanceStory({ playerTimeline, teamName, seasonAvg }) {
 
 function TeamPieComparison({ liveStats, teamName }) {
   const chartData = useMemo(() => {
-    return (liveStats?.rows || []).map(row => ({
-      name: row.Player,
-      pie: parseFloat(row.PIE) || 0 
-    })).sort((a, b) => b.pie - a.pie); 
+    return (liveStats?.rows || [])
+      .map((row) => ({
+        name: row.Player,
+        pie: parseFloat(row.PIE) || 0,
+      }))
+      .sort((a, b) => b.pie - a.pie);
   }, [liveStats]);
 
   return (
-    <div className="player-story-card" style={{ height: '100%', padding: '20px' }}>
-      <h3 style={{ margin: '0 0 20px 0', fontSize: '1.1rem', fontWeight: 800 }}>
+    <div className="player-story-card" style={{ height: "100%", padding: "20px" }}>
+      <h3 style={{ margin: "0 0 20px 0", fontSize: "1.1rem", fontWeight: 800 }}>
         {teamName} Impact Efficiency (PIE)
       </h3>
-      <div style={{ width: '100%', height: 400 }}>
+      <div style={{ width: "100%", height: 400 }}>
         <ResponsiveContainer width="100%" height="100%">
           <BarChart data={chartData} layout="vertical" margin={{ left: 20, right: 30 }}>
-            <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="rgba(0,0,0,0.05)" />
-            <XAxis type="number" domain={[0, 'auto']} hide />
-            <YAxis 
-              dataKey="name" 
-              type="category" 
-              width={120} 
-              tick={{fill: 'var(--ink)', fontSize: 11, fontWeight: 600}} 
+            <CartesianGrid
+              strokeDasharray="3 3"
+              horizontal={true}
+              vertical={false}
+              stroke="rgba(0,0,0,0.05)"
             />
-            <Tooltip 
-              formatter={(value) => [`${value.toFixed(1)}%`, 'PIE']}
-              contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+            <XAxis type="number" domain={[0, "auto"]} hide />
+            <YAxis
+              dataKey="name"
+              type="category"
+              width={120}
+              tick={{ fill: "var(--ink)", fontSize: 11, fontWeight: 600 }}
+            />
+            <Tooltip
+              formatter={(value) => [`${value.toFixed(1)}%`, "PIE"]}
+              contentStyle={{
+                borderRadius: "8px",
+                border: "none",
+                boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+              }}
             />
             <Bar dataKey="pie" fill="var(--accent)" radius={[0, 4, 4, 0]} barSize={20} />
           </BarChart>
@@ -352,7 +407,6 @@ function buildCustomPlayerTimeline(rows, playerId, playerName, teamId) {
   let totalPoints = 0;
   let totalRebounds = 0;
   let totalAssists = 0;
-  
   const pointEvents = [];
   const reboundEvents = [];
   const assistEvents = [];
@@ -362,7 +416,6 @@ function buildCustomPlayerTimeline(rows, playerId, playerName, teamId) {
     const rowAssistId = String(row.assist_athlete_id || "").trim();
     const timestamp = halfTimestampSeconds(row);
     const period = normalizeTrendPeriod(row.period);
-    
 
     if (rowActorId === String(playerId)) {
       // Points
@@ -371,7 +424,7 @@ function buildCustomPlayerTimeline(rows, playerId, playerName, teamId) {
         totalPoints += pts;
         pointEvents.push({ timestamp, period, increment: pts, total: totalPoints });
       }
-      
+
       // Rebounds
       const playType = String(row.type || "");
       if (playType === "Offensive Rebound" || playType === "Defensive Rebound") {
@@ -379,14 +432,12 @@ function buildCustomPlayerTimeline(rows, playerId, playerName, teamId) {
         reboundEvents.push({ timestamp, period, increment: 1, total: totalRebounds });
       }
     }
-    
-   
+
     if (rowAssistId === String(playerId) && Boolean(row.scoring_play)) {
       totalAssists += 1;
       assistEvents.push({ timestamp, period, increment: 1, total: totalAssists });
     }
   });
-
 
   return {
     player_name: playerName || "Selected Player",
@@ -394,8 +445,8 @@ function buildCustomPlayerTimeline(rows, playerId, playerName, teamId) {
     stats: [
       { stat_key: "points", events: pointEvents },
       { stat_key: "rebounds", events: reboundEvents },
-      { stat_key: "assists", events: assistEvents }
-    ]
+      { stat_key: "assists", events: assistEvents },
+    ],
   };
 }
 
@@ -819,16 +870,16 @@ function getPerformanceColor(liveStats, seasonStatsPer, threshold) {
   if (isNaN(stat) || isNaN(per_game) || per_game === 0) {
       return undefined;
   }
-  
+
   const diff = (stat - per_game) / per_game;
 
   if (diff >= threshold) {
-      return "rgba(0, 255, 0, 0.2)"; 
+      return "rgba(0, 255, 0, 0.2)";
   } else if (diff <= -threshold) {
-      return "rgba(255, 0, 0, 0.2)"; 
+      return "rgba(255, 0, 0, 0.2)";
   }
-  
-  return undefined; 
+
+  return undefined;
 }
 
 function DataTable({ columns, rows, state, onChange, extraControls = null, getRowStyle }) {
@@ -1128,6 +1179,14 @@ function getElapsedGameMinute(row) {
 
 export default function App() {
   const [isAdvancedView, setIsAdvancedView] = useState(true);
+  const [advancedTabsOpen, setAdvancedTabsOpen] = useState(false);
+  const [advancedTabs, setAdvancedTabs] = useState({
+    seasonData: true,
+    gameData: true,
+    trends: true,
+    sharedNotes: true,
+    playerPerformance: true,
+  });
   const [activeSeasonSide, setActiveSeasonSide] = useState("ucsb");
   const [seasonDataCollapsed, setSeasonDataCollapsed] = useState(false);
   const [gameDataCollapsed, setGameDataCollapsed] = useState(false);
@@ -1137,10 +1196,10 @@ export default function App() {
   const [insightsView, setInsightsView] = useState("timeline");
   const [savedCollapsed, setSavedCollapsed] = useState(false);
   const [insightsColumnCollapsed, setInsightsColumnCollapsed] = useState(false);
-  
-  // Added performanceMetric missing state
   const [performanceMetric, setPerformanceMetric] = useState("PTS");
 
+  const advancedTabsButtonRef = useRef(null);
+  const advancedTabsMenuRef = useRef(null);
   const seasonDataPanelRef = useRef();
   const gameDataPanelRef = useRef();
   const trendsPanelRef = useRef();
@@ -1150,6 +1209,8 @@ export default function App() {
   const sharedNoteSaveTimeoutRef = useRef(null);
   const sharedNoteTextRef = useRef("");
   const sharedNoteDirtyRef = useRef(false);
+  const trendsUpdatingRef = useRef(false);
+  const pbpUpdatingRef = useRef(false);
 
   const [opponentTeamId, setOpponentTeamId] = useState("ucr");
   const [espnTeams, setEspnTeams] = useState([]);
@@ -1181,6 +1242,8 @@ export default function App() {
   });
   const [pbpGameId, setPbpGameId] = useState("401809115");
   const [pbpGameOptions, setPbpGameOptions] = useState([]);
+  const [pbpAutoRefreshEnabled, setPbpAutoRefreshEnabled] = useState(false);
+  const [pbpAutoRefreshSeconds, setPbpAutoRefreshSeconds] = useState(15);
   const [pbpTableState, setPbpTableState] = useState({
     ...DEFAULT_TABLE_STATE,
   });
@@ -1222,6 +1285,8 @@ export default function App() {
   const [trendsCurrentTimestamp, setTrendsCurrentTimestamp] = useState(10 * 60);
   const [trendsCheckpointLabel, setTrendsCheckpointLabel] =
     useState("1st Half 10:00");
+  const [basicTrendsAutoUpdate, setBasicTrendsAutoUpdate] = useState(false);
+  const [basicTrendsAutoSeconds, setBasicTrendsAutoSeconds] = useState(10);
   const [sharedNoteText, setSharedNoteText] = useState("");
   const [sharedNoteUpdatedAt, setSharedNoteUpdatedAt] = useState("");
   const [sharedNoteLoading, setSharedNoteLoading] = useState(true);
@@ -1257,7 +1322,7 @@ export default function App() {
     return (a.player_name || "").localeCompare(b.player_name || "");
   });
 }, [trendsPlayerTimelines]);
-  
+
   const teamNameById = useMemo(() => {
     const map = {};
     for (const team of espnTeams) {
@@ -1272,133 +1337,170 @@ export default function App() {
   }, [espnTeams]);
 
   const pbpPlayerNameById = useMemo(() => {
-      const map = {};
-      const datasets = [
-          liveStats.ucsb_players?.rows || [],
-          liveStats.opponent_players?.rows || []
-          ];
-      for (const rows of datasets) {
-        for (const row of rows) {
-            const rowKey = String(row?.row_key || "");
-            const playerName = String(row?.Player || "").trim();
-            const match = rowKey.match(/_player_([A-Za-z0-9_-]+)$/);
-            if (!match || !playerName) continue;
-            map[match[1]] = playerName;
-            }
+    const map = {};
+    const datasets = [
+      liveStats.ucsb_players?.rows || [],
+      liveStats.opponent_players?.rows || [],
+    ];
+    for (const rows of datasets) {
+      for (const row of rows) {
+        const rowKey = String(row?.row_key || "");
+        const playerName = String(row?.Player || "").trim();
+        const match = rowKey.match(/_player_([A-Za-z0-9_-]+)$/);
+        if (!match || !playerName) continue;
+        map[match[1]] = playerName;
       }
-      return map;
-      }, [liveStats]);
+    }
+    return map;
+  }, [liveStats]);
+
   const ucsbPbpRows = useMemo(() => {
     return (pbpData.rows || []).filter((row) => {
-        const normalized = normalizeTeamIdInput(String(row.team_id || "").trim());
-        return normalized === normalizeTeamIdInput(UCSB_TEAM_ID) || normalized === "ucsb";
+      const normalized = normalizeTeamIdInput(String(row.team_id || "").trim());
+      return normalized === normalizeTeamIdInput(UCSB_TEAM_ID) || normalized === "ucsb";
     });
-    }, [pbpData.rows]);
+  }, [pbpData.rows]);
 
   const oppPbpRows = useMemo(() => {
-      return (pbpData.rows || []).filter((row) => {
-          const normalized = normalizeTeamIdInput(String(row.team_id || "").trim());
-          return (
-            normalized === normalizeTeamIdInput(normalizedOpponentTeamId) ||
-            normalized === "opponent"
-        );
+    return (pbpData.rows || []).filter((row) => {
+      const normalized = normalizeTeamIdInput(String(row.team_id || "").trim());
+      return (
+        normalized === normalizeTeamIdInput(normalizedOpponentTeamId) ||
+        normalized === "opponent"
+      );
     });
   }, [pbpData.rows, normalizedOpponentTeamId]);
-  const ucsbAvailablePlayers = useMemo (() => {
-      const ids = new Set();
-      for (const row of ucsbPbpRows) {
-          const actorId = String(row.athlete_id || "").trim();
-          const assistId = String(row.assist_athlete_id || "").trim();
-          if (actorId) ids.add(actorId);
-          if (assistId) ids.add(assistId);
-          }
-      return Array.from(ids)
+
+  const ucsbAvailablePlayers = useMemo(() => {
+    const ids = new Set();
+    for (const row of ucsbPbpRows) {
+      const actorId = String(row.athlete_id || "").trim();
+      const assistId = String(row.assist_athlete_id || "").trim();
+      if (actorId) ids.add(actorId);
+      if (assistId) ids.add(assistId);
+    }
+    return Array.from(ids)
       .map((id) => ({
-          id,
-          name: pbpPlayerNameById[id] || `Player ${id}`
-          }))
-      .sort((a,b) => a.name.localeCompare(b.name));
-      }, [ucsbPbpRows, pbpPlayerNameById]);
-  const oppAvailablePlayers = useMemo (() => {
-      const ids = new Set();
-      for (const row of oppPbpRows) {
-          const actorId = String(row.athlete_id || "").trim();
-          const assistId = String(row.assist_athlete_id || "").trim();
-          if (actorId) ids.add(actorId);
-          if (assistId) ids.add(assistId);
-          }
-      return Array.from(ids)
+        id,
+        name: pbpPlayerNameById[id] || `Player ${id}`,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [ucsbPbpRows, pbpPlayerNameById]);
+
+  const oppAvailablePlayers = useMemo(() => {
+    const ids = new Set();
+    for (const row of oppPbpRows) {
+      const actorId = String(row.athlete_id || "").trim();
+      const assistId = String(row.assist_athlete_id || "").trim();
+      if (actorId) ids.add(actorId);
+      if (assistId) ids.add(assistId);
+    }
+    return Array.from(ids)
       .map((id) => ({
-          id,
-          name: pbpPlayerNameById[id] || `Player ${id}`
-          }))
-      .sort((a,b) => a.name.localeCompare(b.name));
-      }, [oppPbpRows, pbpPlayerNameById]);
+        id,
+        name: pbpPlayerNameById[id] || `Player ${id}`,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [oppPbpRows, pbpPlayerNameById]);
+
   const allPlayersList = useMemo(() => {
-  return [
-    ...ucsbAvailablePlayers.map((player) => ({
-      ...player,
-      team_id: UCSB_TEAM_ID,
-    })),
-    ...oppAvailablePlayers.map((player) => ({
-      ...player,
-      team_id: normalizedOpponentTeamId || "opponent",
-    })),
-  ];
-}, [ucsbAvailablePlayers, oppAvailablePlayers, normalizedOpponentTeamId]);
+    return [
+      ...ucsbAvailablePlayers.map((player) => ({
+        ...player,
+        team_id: UCSB_TEAM_ID,
+      })),
+      ...oppAvailablePlayers.map((player) => ({
+        ...player,
+        team_id: normalizedOpponentTeamId || "opponent",
+      })),
+    ];
+  }, [ucsbAvailablePlayers, oppAvailablePlayers, normalizedOpponentTeamId]);
+
   const pbpComparisonChartData = useMemo(() => {
-      if (!pbpComparePlayer1 || ! pbpComparePlayer2) return [];
-      const player1Name = pbpPlayerNameById[pbpComparePlayer1] || "Player 1";
-      const player2Name = pbpPlayerNameById[pbpComparePlayer2] || "Player 2";
+    if (!pbpComparePlayer1 || !pbpComparePlayer2) return [];
+    const player1Name = pbpPlayerNameById[pbpComparePlayer1] || "Player 1";
+    const player2Name = pbpPlayerNameById[pbpComparePlayer2] || "Player 2";
 
-      let total1 = 0;
-      let total2 = 0;
+    let total1 = 0;
+    let total2 = 0;
 
-      const minuteMap = new Map();
-      const seenScoringEvents = new Set();
-      for (const row of pbpData.rows || []) {
-          const incrementsByPlayer = collectPlayerPbpIncrements(row, seenScoringEvents);
+    const minuteMap = new Map();
+    const seenScoringEvents = new Set();
+    for (const row of pbpData.rows || []) {
+      const incrementsByPlayer = collectPlayerPbpIncrements(row, seenScoringEvents);
 
-          total1 += Number(incrementsByPlayer[pbpComparePlayer1]?.[pbpCompareMetric] || 0);
-          total2 += Number(incrementsByPlayer[pbpComparePlayer2]?.[pbpCompareMetric] || 0);
-          const minute = getElapsedGameMinute(row);
+      total1 += Number(incrementsByPlayer[pbpComparePlayer1]?.[pbpCompareMetric] || 0);
+      total2 += Number(incrementsByPlayer[pbpComparePlayer2]?.[pbpCompareMetric] || 0);
+      const minute = getElapsedGameMinute(row);
 
-          if (!Number.isFinite(minute)) continue;
+      if (!Number.isFinite(minute)) continue;
 
-          minuteMap.set(minute, {
-              minute,
-              [player1Name]: total1,
-              [player2Name]: total2
-          });
+      minuteMap.set(minute, {
+        minute,
+        [player1Name]: total1,
+        [player2Name]: total2,
+      });
+    }
+    if (minuteMap.size === 0) return [];
+    const maxMinute = Math.max(...minuteMap.keys());
+    if (!Number.isFinite(maxMinute)) return [];
+    const output = [];
+    let last1 = 0;
+    let last2 = 0;
+
+    for (let minute = 0; minute <= maxMinute; minute += 1) {
+      const row = minuteMap.get(minute);
+      if (row) {
+        last1 = row[player1Name];
+        last2 = row[player2Name];
       }
-      if (minuteMap.size === 0) return [];
-      const maxMinute = Math.max(...minuteMap.keys());
-      if (!Number.isFinite(maxMinute)) return [];
-      const output = [];
-      let last1 = 0;
-      let last2 = 0;
-
-      for (let minute = 0; minute <= maxMinute; minute += 1) {
-          const row = minuteMap.get(minute);
-          if (row) {
-              last1 = row[player1Name];
-              last2 = row[player2Name];
-          }
-          output.push({
-              minute,
-              minuteLabel: `${minute}`,
-              [player1Name]: last1,
-              [player2Name]: last2
-          });
-      }
-  return output;
+      output.push({
+        minute,
+        minuteLabel: `${minute}`,
+        [player1Name]: last1,
+        [player2Name]: last2,
+      });
+    }
+    return output;
   }, [
-      pbpData.rows,
-      pbpComparePlayer1,
-      pbpComparePlayer2,
-      pbpCompareMetric,
-      pbpPlayerNameById
-      ]);
+    pbpData.rows,
+    pbpComparePlayer1,
+    pbpComparePlayer2,
+    pbpCompareMetric,
+    pbpPlayerNameById,
+  ]);
+
+  useEffect(() => {
+    if (!advancedTabsOpen) {
+      return;
+    }
+    const handleMouseDown = (event) => {
+      if (
+        advancedTabsMenuRef.current?.contains(event.target) ||
+        advancedTabsButtonRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+      setAdvancedTabsOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setAdvancedTabsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleMouseDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleMouseDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [advancedTabsOpen]);
+
+  useEffect(() => {
+    if (!isAdvancedView) {
+      setAdvancedTabsOpen(false);
+    }
+  }, [isAdvancedView]);
 
   const loadEspnTeams = useCallback(async () => {
     setTeamsLoading(true);
@@ -1426,13 +1528,18 @@ export default function App() {
     sharedNoteDirtyRef.current = sharedNoteDirty;
   }, [sharedNoteDirty]);
 
-  
+  useEffect(() => {
+    trendsUpdatingRef.current = trendsUpdating;
+  }, [trendsUpdating]);
+
+  useEffect(() => {
+    pbpUpdatingRef.current = pbpUpdating;
+  }, [pbpUpdating]);
+
   const loadPbpIds = useCallback(async () => {
     try {
       const payload = await fetchJson(`${API_BASE}/api/gameids`, {}, 1);
-      setPbpGameOptions(
-        payload.games.map(g => ({ value: g.id, label: g.label }))
-      );
+      setPbpGameOptions(payload.games.map((g) => ({ value: g.id, label: g.label })));
     } catch (error) {
       console.error("Error fetching PBP IDs:", error);
     }
@@ -1713,6 +1820,54 @@ export default function App() {
     trendsCurrentTimestamp,
   ]);
 
+  useEffect(() => {
+    if (!basicTrendsAutoUpdate || isAdvancedView) {
+      return;
+    }
+    const intervalSeconds = Number(basicTrendsAutoSeconds);
+    const safeIntervalSeconds =
+      Number.isFinite(intervalSeconds) && intervalSeconds > 0
+        ? intervalSeconds
+        : 10;
+    const tick = () => {
+      if (!trendsUpdatingRef.current) {
+        updateTrends();
+      }
+    };
+    tick();
+    const intervalId = window.setInterval(tick, safeIntervalSeconds * 1000);
+    return () => window.clearInterval(intervalId);
+  }, [
+    basicTrendsAutoUpdate,
+    basicTrendsAutoSeconds,
+    isAdvancedView,
+    updateTrends,
+  ]);
+
+  useEffect(() => {
+    if (!pbpAutoRefreshEnabled || !isAdvancedView) {
+      return;
+    }
+    const intervalSeconds = Number(pbpAutoRefreshSeconds);
+    const safeIntervalSeconds =
+      Number.isFinite(intervalSeconds) && intervalSeconds > 0
+        ? intervalSeconds
+        : 15;
+    const tick = () => {
+      if (!pbpUpdatingRef.current) {
+        updatePbp();
+      }
+    };
+    tick();
+    const intervalId = window.setInterval(tick, safeIntervalSeconds * 1000);
+    return () => window.clearInterval(intervalId);
+  }, [
+    pbpAutoRefreshEnabled,
+    pbpAutoRefreshSeconds,
+    isAdvancedView,
+    updatePbp,
+  ]);
+
   const resolveTeamName = useCallback(
     (teamId) => {
       const normalized = normalizeTeamIdInput(teamId);
@@ -1875,6 +2030,36 @@ export default function App() {
   const negativePlayerTrends = trendsPlayerMessages.filter(
     (message) => message.tone !== "good",
   );
+  const basicTrendSections = [
+    {
+      key: "team-positive",
+      title: "Team Trends · Positive",
+      tone: "good",
+      items: positiveTeamTrends,
+      emptyText: "No positive team trends at the current checkpoint.",
+    },
+    {
+      key: "team-negative",
+      title: "Team Trends · Negative",
+      tone: "bad",
+      items: negativeTeamTrends,
+      emptyText: "No negative team trends at the current checkpoint.",
+    },
+    {
+      key: "player-positive",
+      title: "Individual Trends · Positive",
+      tone: "good",
+      items: positivePlayerTrends,
+      emptyText: "No positive individual trends at the current checkpoint.",
+    },
+    {
+      key: "player-negative",
+      title: "Individual Trends · Negative",
+      tone: "bad",
+      items: negativePlayerTrends,
+      emptyText: "No negative individual trends at the current checkpoint.",
+    },
+  ];
   const pbpClockHint = useMemo(() => {
     if (pbpAdvancedFiltersDraft.clockMode === "last_n" && !pbpCanApply) {
       return "Enter minutes greater than 0 to apply.";
@@ -2185,6 +2370,32 @@ export default function App() {
     </details>
   );
 
+  const advancedTabOptions = [
+    { key: "seasonData", label: "Season Data" },
+    { key: "gameData", label: "Game Data" },
+    { key: "trends", label: "Trends" },
+    { key: "sharedNotes", label: "Shared Notes" },
+    { key: "playerPerformance", label: "Player Performance" },
+  ];
+  const showSeasonData = advancedTabs.seasonData;
+  const showGameData = advancedTabs.gameData;
+  const showTrends = advancedTabs.trends;
+  const showSharedNotes = advancedTabs.sharedNotes;
+  const showPlayerPerformance = advancedTabs.playerPerformance;
+  const hasAdvancedPanels =
+    showSeasonData ||
+    showGameData ||
+    showTrends ||
+    showSharedNotes ||
+    showPlayerPerformance;
+  const showGameHandle = showGameData && showSeasonData;
+  const showTrendsHandle = showTrends && (showSeasonData || showGameData);
+  const showSharedNotesHandle =
+    showSharedNotes && (showSeasonData || showGameData || showTrends);
+  const showPlayerPerformanceHandle =
+    showPlayerPerformance &&
+    (showSeasonData || showGameData || showTrends || showSharedNotes);
+
   const sharedNoteStatus = sharedNoteLoading
     ? "Loading shared notes..."
     : sharedNoteSaving
@@ -2206,7 +2417,9 @@ export default function App() {
           className="shared-note-input"
           value={sharedNoteText}
           onChange={handleSharedNoteChange}
-          placeholder="Type here."
+
+          readOnly={!isAdvancedView}
+          aria-readonly={!isAdvancedView}
         />
       </div>
     </>
@@ -2218,7 +2431,101 @@ export default function App() {
         <div className="top-app-bar-left">
           <div className="logo-slot" aria-label="Logo placeholder" />
           <h1>Basketball Live Analytics</h1>
+          {isAdvancedView ? (
+            <div className="tabs-dropdown">
+              <button
+                type="button"
+                className="neutral tabs-dropdown-toggle"
+                onClick={() => setAdvancedTabsOpen((prev) => !prev)}
+                aria-haspopup="menu"
+                aria-expanded={advancedTabsOpen}
+                ref={advancedTabsButtonRef}
+              >
+                Tabs ▾
+              </button>
+              {advancedTabsOpen ? (
+                <div className="tabs-dropdown-menu" ref={advancedTabsMenuRef}>
+                  {advancedTabOptions.map((option) => (
+                    <label key={option.key} className="tabs-dropdown-item">
+                      <input
+                        type="checkbox"
+                        checked={advancedTabs[option.key]}
+                        onChange={(event) =>
+                          setAdvancedTabs((prev) => ({
+                            ...prev,
+                            [option.key]: event.target.checked,
+                          }))
+                        }
+                      />
+                      <span>{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
+        {isAdvancedView ? (
+          <div className="top-app-bar-middle">
+            <div className="top-bar-controls">
+              <div className="top-bar-controls-main">
+                <label>
+                  <span className="label-inline">Game ID:</span>
+                  <select
+                    value={pbpGameId}
+                    onChange={(event) => setPbpGameId(event.target.value)}
+                    disabled={pbpUpdating || trendsUpdating}
+                  >
+                    {pbpGameOptions.length ? (
+                      pbpGameOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))
+                    ) : (
+                      <option value={pbpGameId}>{pbpGameId}</option>
+                    )}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={updatePbp}
+                  disabled={pbpUpdating || trendsUpdating || pbpAutoRefreshEnabled}
+                >
+                  {pbpUpdating ? "Refreshing..." : "Refresh"}
+                </button>
+                <div className="top-bar-auto-refresh">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={pbpAutoRefreshEnabled}
+                      onChange={(event) =>
+                        setPbpAutoRefreshEnabled(event.target.checked)
+                      }
+                    />
+                    <span>Auto Refresh every</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={pbpAutoRefreshSeconds}
+                    onChange={(event) => {
+                      const nextValue = Number(event.target.value);
+                      setPbpAutoRefreshSeconds(
+                        Number.isFinite(nextValue) && nextValue > 0
+                          ? nextValue
+                          : 1,
+                      );
+                    }}
+                    disabled={!pbpAutoRefreshEnabled}
+                  />
+                  <span>seconds</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
         <div className="top-app-bar-right">
           <span>{isAdvancedView ? "Advanced View" : "Basic View"}</span>
           <button
@@ -2231,17 +2538,20 @@ export default function App() {
         </div>
       </div>
       {isAdvancedView ? (
-        <PanelGroup direction="horizontal" key='advanced-view'>
-          <Panel
-            ref={seasonDataPanelRef}
-            defaultSize={25}
-            minSize={22}
-            collapsible
-            collapsedSize={4}
-            onCollapse={() => setSeasonDataCollapsed(true)}
-            onExpand={() => setSeasonDataCollapsed(false)}
-          >
-            <div className="panel data-panel">
+        hasAdvancedPanels ? (
+          <PanelGroup direction="horizontal" key="advanced-view">
+            {showSeasonData ? (
+              <Panel
+                key="season-data"
+                ref={seasonDataPanelRef}
+                defaultSize={25}
+                minSize={22}
+                collapsible
+                collapsedSize={4}
+                onCollapse={() => setSeasonDataCollapsed(true)}
+                onExpand={() => setSeasonDataCollapsed(false)}
+              >
+                <div className="panel data-panel">
               {seasonDataCollapsed ? (
                 <div
                   className="panel-collapsed"
@@ -2329,19 +2639,27 @@ export default function App() {
                 </>
               )}
             </div>
-          </Panel>
+            </Panel>
+          ) : null}
 
-          <PanelResizeHandle className="resize-handle vertical" />
+            {showGameHandle ? (
+              <PanelResizeHandle
+                key="handle-season-game"
+                className="resize-handle vertical"
+              />
+            ) : null}
 
-          <Panel
-            ref={gameDataPanelRef}
-            defaultSize={25}
-            minSize={22}
-            collapsible
-            collapsedSize={4}
-            onCollapse={() => setGameDataCollapsed(true)}
-            onExpand={() => setGameDataCollapsed(false)}
-          >
+            {showGameData ? (
+              <Panel
+                key="game-data"
+                ref={gameDataPanelRef}
+                defaultSize={25}
+                minSize={22}
+                collapsible
+                collapsedSize={4}
+                onCollapse={() => setGameDataCollapsed(true)}
+                onExpand={() => setGameDataCollapsed(false)}
+              >
             <div className="panel game-panel">
               {gameDataCollapsed ? (
                 <div
@@ -2371,24 +2689,6 @@ export default function App() {
                       </button>
                     </div>
                     <div className="panel-header-actions">
-                      <label>
-                        <span className="label-inline">Game ID:</span>
-                        <select
-                          value={pbpGameId}
-                          onChange={(event) => setPbpGameId(event.target.value)}
-                          disabled={pbpUpdating || trendsUpdating}
-                        >
-                          {pbpGameOptions.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <button type="button" onClick={updatePbp} disabled={pbpUpdating}>
-                        {pbpUpdating ? "Updating..." : "Update"}
-                      </button>
-                      <span>{pbpData.updated_at ? `Updated ${new Date(pbpData.updated_at).toLocaleString()}` : "No saved PBP yet"}</span>
                       <CollapseButton
                         panelRef={gameDataPanelRef}
                         collapsed={gameDataCollapsed}
@@ -2434,8 +2734,8 @@ export default function App() {
                         <span style={{ marginLeft: "20px", marginRight: "10px" }}>
                           Highlight Performance:
                         </span>
-                        <select 
-                          value={performanceMetric} 
+                        <select
+                          value={performanceMetric}
                           onChange={(e) => setPerformanceMetric(e.target.value)}
                           style={{ padding: "4px", borderRadius: "4px" }}
                         >
@@ -2465,10 +2765,10 @@ export default function App() {
 
                             if (performanceMetric === "PIE") {
                               const pieString = row["PIE"] || "0%";
-                              const pieValue = parseFloat(pieString) / 100; 
+                              const pieValue = parseFloat(pieString) / 100;
 
-                              if (pieValue >= 0.12) { 
-                                return { backgroundColor: "rgba(0, 255, 0, 0.3)" }; 
+                              if (pieValue >= 0.12) {
+                                return { backgroundColor: "rgba(0, 255, 0, 0.3)" };
                               } else if (pieValue <= 0.05 && pieValue > 0) {
                                 return { backgroundColor: "rgba(255, 0, 0, 0.2)" };
                               }
@@ -2479,12 +2779,12 @@ export default function App() {
                             }
                             const seasonTeamRows = seasonPlayers[activeLiveSide].rows;
                             const seasonPlayer = seasonTeamRows.find((p) => {
-                              const seasonName = p["Player"]; 
+                              const seasonName = p["Player"];
                               if (!seasonName) return false;
 
                               if (seasonName.includes(",")) {
                                   const [lastName, firstName] = seasonName.split(",").map(s => s.trim());
-                                  const flippedName = `${firstName} ${lastName}`; 
+                                  const flippedName = `${firstName} ${lastName}`;
                                   return flippedName === playerName;
                               }
 
@@ -2500,28 +2800,30 @@ export default function App() {
                             const seasonStatsKey = statMapping[performanceMetric];
 
                             if (seasonPlayer && seasonPlayer[seasonStatsKey]) {
-
                               const liveValue = parseFloat(row[performanceMetric]) || 0;
-                              const liveMin = parseFloat(row["MIN"]) || 0; 
+                              const liveMin = parseFloat(row["MIN"]) || 0;
                               const seasonAvgValue = parseFloat(seasonPlayer[seasonStatsKey]);
 
                               const seasonTotalMin = parseFloat(seasonPlayer["MIN"]) || 0;
                               const gpString = seasonPlayer["GP-GS"] || "";
-                              const gp = parseFloat(gpString.split("-")[0]) || 0; 
-                              const seasonMpg = gp > 0 ? seasonTotalMin / gp : 0;                       
+                              const gp = parseFloat(gpString.split("-")[0]) || 0;
+                              const seasonMpg = gp > 0 ? seasonTotalMin / gp : 0;
 
                               if (liveMin > 0 && seasonMpg > 0) {
-
                                 const projectedVal = (liveValue / liveMin) * seasonMpg;
 
                                 let threshold = .25;
                                 if (performanceMetric === "REB") {
-                                  threshold = .35; 
+                                  threshold = .35;
                                 } else if (performanceMetric === "AST") {
-                                  threshold = .35
+                                  threshold = .35;
                                 }
 
-                                const color = getPerformanceColor(projectedVal, seasonAvgValue, threshold);
+                                const color = getPerformanceColor(
+                                  projectedVal,
+                                  seasonAvgValue,
+                                  threshold,
+                                );
 
                                 if (color) {
                                   return { backgroundColor: color };
@@ -2573,19 +2875,27 @@ export default function App() {
                 </>
               )}
             </div>
-          </Panel>
+            </Panel>
+          ) : null}
 
-          <PanelResizeHandle className="resize-handle vertical" />
+            {showTrendsHandle ? (
+              <PanelResizeHandle
+                key="handle-game-trends"
+                className="resize-handle vertical"
+              />
+            ) : null}
 
-          <Panel
-            ref={trendsPanelRef}
-            defaultSize={20}
-            minSize={14}
-            collapsible
-            collapsedSize={4}
-            onCollapse={() => setTrendsCollapsed(true)}
-            onExpand={() => setTrendsCollapsed(false)}
-          >
+            {showTrends ? (
+              <Panel
+                key="trends"
+                ref={trendsPanelRef}
+                defaultSize={20}
+                minSize={14}
+                collapsible
+                collapsedSize={4}
+                onCollapse={() => setTrendsCollapsed(true)}
+                onExpand={() => setTrendsCollapsed(false)}
+              >
             <div className="panel trends-panel">
               {trendsCollapsed ? (
                 <div
@@ -2732,140 +3042,208 @@ export default function App() {
                 </>
               )}
             </div>
-          </Panel>
+            </Panel>
+          ) : null}
 
-          <PanelResizeHandle className="resize-handle vertical" />
+            {showSharedNotesHandle ? (
+              <PanelResizeHandle
+                key="handle-trends-notes"
+                className="resize-handle vertical"
+              />
+            ) : null}
 
-          {/* SHARED NOTES PANEL */}
-          <Panel
-            ref={savedPanelRef}
-            defaultSize={15}
-            minSize={12}
-            collapsible
-            collapsedSize={4}
-            onCollapse={() => setSavedCollapsed(true)}
-            onExpand={() => setSavedCollapsed(false)}
-          >
-            {savedCollapsed ? (
-              <div
-                className="panel-collapsed"
-                onClick={() => savedPanelRef.current?.expand()}
+            {showSharedNotes ? (
+              <Panel
+                key="shared-notes"
+                ref={savedPanelRef}
+                defaultSize={15}
+                minSize={12}
+                collapsible
+                collapsedSize={4}
+                onCollapse={() => setSavedCollapsed(true)}
+                onExpand={() => setSavedCollapsed(false)}
               >
-                <span>Shared Notes</span>
-              </div>
-            ) : (
-              <div className="insights-column">
-                <div className="insights-column-header">
-                  <span>Shared Notes</span>
-                  <CollapseButton
-                    panelRef={savedPanelRef}
-                    collapsed={savedCollapsed}
-                    onCollapsedChange={setSavedCollapsed}
-                    title="Shared Notes"
-                  />
-                </div>
-                {sharedNotePanelBody}
-              </div>
-            )}
-          </Panel>
-
-          <PanelResizeHandle className="resize-handle vertical" />
-
-          {/* PLAYER PERFORMANCE PANEL */}
-          <Panel
-            ref={insightsColumnRef}
-            defaultSize={25}
-            minSize={22}
-            collapsible
-            collapsedSize={4}
-            onCollapse={() => setInsightsColumnCollapsed(true)}
-            onExpand={() => setInsightsColumnCollapsed(false)}
-          >
-            {insightsColumnCollapsed ? (
-              <div className="panel-collapsed" onClick={() => insightsColumnRef.current?.expand()}>
-                <span>Player Performance</span>
-              </div>
-            ) : (
-              <div className="insights-column">
-                <div className="insights-column-header">
-                  <div className="tab-switcher" style={{ display: 'flex', gap: '10px' }}>
-                    <button 
-                      type="button"
-                      className={`leaf ${insightsView === "timeline" ? "active" : ""}`}
-                      onClick={() => setInsightsView("timeline")}
-                    >
-                      Individual Performance
-                    </button>
-                    <button 
-                      type="button"
-                      className={`leaf ${insightsView === "pie-overview" ? "active" : ""}`}
-                      onClick={() => setInsightsView("pie-overview")}
-                    >
-                      Overall Impact
-                    </button>
+                {savedCollapsed ? (
+                  <div
+                    className="panel-collapsed"
+                    onClick={() => savedPanelRef.current?.expand()}
+                  >
+                    <span>Shared Notes</span>
                   </div>
-                  <CollapseButton
-                    panelRef={insightsColumnRef}
-                    collapsed={insightsColumnCollapsed}
-                    onCollapsedChange={setInsightsColumnCollapsed}
-                    title="Player Performance"
-                  />
-                </div>
-
-                <div className="panel story-panel" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-                  {insightsView === "timeline" ? (
-                    <>
-                      <div style={{ padding: '15px', borderBottom: '1px solid #eee' }}>
-                        <label style={{ fontSize: '12px', fontWeight: 'bold', display: 'block', marginBottom: '5px' }}>
-                          SELECT PLAYER
-                        </label>
-                        <select 
-                          style={{ width: '100%', padding: '8px' }}
-                          value={selectedStoryPlayerId}
-                          onChange={(e) => setSelectedStoryPlayerId(e.target.value)}
-                        >
-                          <option value="">Choose a player...</option>
-                          {allPlayersList.map((player) => (
-                            <option key={player.id} value={player.id}>
-                              {player.name} ({resolveTeamName(player.team_id)})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div style={{ flex: 1, overflowY: 'auto' }}>
-                        {(() => {
-                          const selectedPlayer = allPlayersList.find(p => p.id === selectedStoryPlayerId);
-                          return (
-                            <PlayerPerformanceStory 
-                              playerTimeline={buildCustomPlayerTimeline(
-                                pbpData.rows, 
-                                selectedStoryPlayerId, 
-                                selectedPlayer?.name, 
-                                selectedPlayer?.team_id
-                              )}
-                              teamName={resolveTeamName(selectedPlayer?.team_id)}
-                            />
-                          );
-                        })()}
-                      </div>
-                    </>
-                  ) : (
-                    <div style={{ flex: 1, overflowY: 'auto' }}>
-                      <TeamPieComparison 
-                        liveStats={liveStats[`${activeLivePrefix}_players`]} 
-                        teamName={activeLiveSide === "ucsb" ? ucsbDisplayName : opponentDisplayName} 
+                ) : (
+                  <div className="insights-column">
+                    <div className="insights-column-header">
+                      <span>Shared Notes</span>
+                      <CollapseButton
+                        panelRef={savedPanelRef}
+                        collapsed={savedCollapsed}
+                        onCollapsedChange={setSavedCollapsed}
+                        title="Shared Notes"
                       />
                     </div>
-                  )}
-                </div>
-              </div>
-            )}
-          </Panel>
+                    {sharedNotePanelBody}
+                  </div>
+                )}
+              </Panel>
+            ) : null}
 
-        </PanelGroup>
+            {showPlayerPerformanceHandle ? (
+              <PanelResizeHandle
+                key="handle-notes-performance"
+                className="resize-handle vertical"
+              />
+            ) : null}
+
+            {showPlayerPerformance ? (
+              <Panel
+                key="player-performance"
+                ref={insightsColumnRef}
+                defaultSize={25}
+                minSize={22}
+                collapsible
+                collapsedSize={4}
+                onCollapse={() => setInsightsColumnCollapsed(true)}
+                onExpand={() => setInsightsColumnCollapsed(false)}
+              >
+                {insightsColumnCollapsed ? (
+                  <div
+                    className="panel-collapsed"
+                    onClick={() => insightsColumnRef.current?.expand()}
+                  >
+                    <span>Player Performance</span>
+                  </div>
+                ) : (
+                  <div className="insights-column">
+                    <div className="insights-column-header">
+                      <div
+                        className="tab-switcher"
+                        style={{ display: "flex", gap: "10px" }}
+                      >
+                        <button
+                          type="button"
+                          className={`leaf ${
+                            insightsView === "timeline" ? "active" : ""
+                          }`}
+                          onClick={() => setInsightsView("timeline")}
+                        >
+                          Individual Performance
+                        </button>
+                        <button
+                          type="button"
+                          className={`leaf ${
+                            insightsView === "pie-overview" ? "active" : ""
+                          }`}
+                          onClick={() => setInsightsView("pie-overview")}
+                        >
+                          Overall Impact
+                        </button>
+                      </div>
+                      <CollapseButton
+                        panelRef={insightsColumnRef}
+                        collapsed={insightsColumnCollapsed}
+                        onCollapsedChange={setInsightsColumnCollapsed}
+                        title="Player Performance"
+                      />
+                    </div>
+
+                    <div
+                      className="panel story-panel"
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        height: "100%",
+                      }}
+                    >
+                      {insightsView === "timeline" ? (
+                        <>
+                          <div
+                            style={{
+                              padding: "15px",
+                              borderBottom: "1px solid #eee",
+                            }}
+                          >
+                            <label
+                              style={{
+                                fontSize: "12px",
+                                fontWeight: "bold",
+                                display: "block",
+                                marginBottom: "5px",
+                              }}
+                            >
+                              SELECT PLAYER
+                            </label>
+                            <select
+                              style={{ width: "100%", padding: "8px" }}
+                              value={selectedStoryPlayerId}
+                              onChange={(e) =>
+                                setSelectedStoryPlayerId(e.target.value)
+                              }
+                            >
+                              <option value="">Choose a player...</option>
+                              {allPlayersList.map((player) => (
+                                <option key={player.id} value={player.id}>
+                                  {player.name} ({resolveTeamName(player.team_id)})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div style={{ flex: 1, overflowY: "auto" }}>
+                            {(() => {
+                              const selectedPlayer = allPlayersList.find(
+                                (p) => p.id === selectedStoryPlayerId,
+                              );
+                              return (
+                                <PlayerPerformanceStory
+                                  playerTimeline={buildCustomPlayerTimeline(
+                                    pbpData.rows,
+                                    selectedStoryPlayerId,
+                                    selectedPlayer?.name,
+                                    selectedPlayer?.team_id,
+                                  )}
+                                  teamName={resolveTeamName(
+                                    selectedPlayer?.team_id,
+                                  )}
+                                />
+                              );
+                            })()}
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ flex: 1, overflowY: "auto" }}>
+                          <TeamPieComparison
+                            liveStats={liveStats[`${activeLivePrefix}_players`]}
+                            teamName={
+                              activeLiveSide === "ucsb"
+                                ? ucsbDisplayName
+                                : opponentDisplayName
+                            }
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </Panel>
+            ) : null}
+
+          </PanelGroup>
+        ) : (
+          <PanelGroup direction="horizontal" key="advanced-view-empty">
+            <Panel defaultSize={100} minSize={40}>
+              <div className="panel empty-panel">
+                <div className="section-header">
+                  <h2>Advanced View</h2>
+                </div>
+                <p className="placeholder">
+                  Select tabs from the top menu to show panels.
+                </p>
+              </div>
+            </Panel>
+          </PanelGroup>
+        )
       ) : (
-        <PanelGroup direction="horizontal" className="basic-view-shell" key='basic-view'>
+        <PanelGroup direction="horizontal" className="basic-view-shell" key="basic-view">
           <Panel defaultSize={68} minSize={40}>
             <div className="panel trends-panel">
               <div className="section-header">
@@ -2882,6 +3260,34 @@ export default function App() {
                   <span> No trends snapshot yet.</span>
                 )}
                 {trendsError ? <span className="error"> {trendsError}</span> : null}
+              </div>
+              <div className="table-status trends-auto-update">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={basicTrendsAutoUpdate}
+                    onChange={(event) =>
+                      setBasicTrendsAutoUpdate(event.target.checked)
+                    }
+                  />
+                  Auto update every
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={basicTrendsAutoSeconds}
+                  onChange={(event) => {
+                    const nextValue = Number(event.target.value);
+                    setBasicTrendsAutoSeconds(
+                      Number.isFinite(nextValue) && nextValue > 0
+                        ? nextValue
+                        : 1,
+                    );
+                  }}
+                  disabled={!basicTrendsAutoUpdate}
+                />
+                <span>seconds</span>
               </div>
               <div className="table-status trends-threshold-controls">
                 <label>
@@ -2916,143 +3322,30 @@ export default function App() {
               <div className="table-status">
                 <span>Checkpoint: {trendsCheckpointLabel}</span>
               </div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "8px",
-                  minHeight: 0,
-                  flex: 1,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    minHeight: 0,
-                    paddingLeft: "14px",
-                  }}
-                >
-                  <div style={{ fontSize: "12px", fontWeight: 600, marginBottom: "6px" }}>
-                    Team Trends
-                  </div>
-                  <div
-                    style={{ display: "flex", flexDirection: "column", gap: "8px", minHeight: 0 }}
-                  >
-                    <div style={{ fontSize: "12px", fontWeight: 600 }}>Positive</div>
-                    <div className="table-scroll">
-                      {positiveTeamTrends.length ? (
-                        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                          {positiveTeamTrends.map((message, index) => (
-                            <li
-                              key={`trend_message_basic_positive_${index}`}
-                              style={{
-                                backgroundColor: "rgba(34, 197, 94, 0.18)",
-                                border: "1px solid rgba(34, 197, 94, 0.5)",
-                                borderRadius: "0",
-                                padding: "8px 10px",
-                                marginBottom: "0",
-                                fontSize: "12px",
-                              }}
-                            >
-                              {message.text}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <span>No positive team trends at the current checkpoint.</span>
-                      )}
+              <div className="table-scroll basic-trends-merged">
+                {basicTrendSections.map((section) => (
+                  <div key={section.key} className="basic-trends-section">
+                    <div className="basic-trends-section-title">
+                      {section.title}
                     </div>
-                    <div style={{ fontSize: "12px", fontWeight: 600 }}>Negative</div>
-                    <div className="table-scroll">
-                      {negativeTeamTrends.length ? (
-                        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                          {negativeTeamTrends.map((message, index) => (
-                            <li
-                              key={`trend_message_basic_negative_${index}`}
-                              style={{
-                                backgroundColor: "rgba(239, 68, 68, 0.18)",
-                                border: "1px solid rgba(239, 68, 68, 0.5)",
-                                borderRadius: "0",
-                                padding: "8px 10px",
-                                marginBottom: "0",
-                                fontSize: "12px",
-                              }}
-                            >
-                              {message.text}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <span>No negative team trends at the current checkpoint.</span>
-                      )}
-                    </div>
+                    {section.items.length ? (
+                      <ul className="basic-trends-list">
+                        {section.items.map((message, index) => (
+                          <li
+                            key={`${section.key}_${index}`}
+                            className={`basic-trends-item ${
+                              section.tone === "good" ? "positive" : "negative"
+                            }`}
+                          >
+                            {message.text}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div className="basic-trends-empty">{section.emptyText}</div>
+                    )}
                   </div>
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    minHeight: 0,
-                    paddingLeft: "14px",
-                  }}
-                >
-                  <div style={{ fontSize: "12px", fontWeight: 600, marginBottom: "6px" }}>
-                    Individual Trends
-                  </div>
-                  <div
-                    style={{ display: "flex", flexDirection: "column", gap: "8px", minHeight: 0 }}
-                  >
-                    <div style={{ fontSize: "12px", fontWeight: 600 }}>Positive</div>
-                    <div className="table-scroll">
-                      {positivePlayerTrends.length ? (
-                        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                          {positivePlayerTrends.map((message, index) => (
-                            <li
-                              key={`trend_player_message_basic_positive_${index}`}
-                              style={{
-                                backgroundColor: "rgba(34, 197, 94, 0.18)",
-                                border: "1px solid rgba(34, 197, 94, 0.5)",
-                                borderRadius: "0",
-                                padding: "8px 10px",
-                                marginBottom: "0",
-                                fontSize: "12px",
-                              }}
-                            >
-                              {message.text}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <span>No positive individual trends at the current checkpoint.</span>
-                      )}
-                    </div>
-                    <div style={{ fontSize: "12px", fontWeight: 600 }}>Negative</div>
-                    <div className="table-scroll">
-                      {negativePlayerTrends.length ? (
-                        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                          {negativePlayerTrends.map((message, index) => (
-                            <li
-                              key={`trend_player_message_basic_negative_${index}`}
-                              style={{
-                                backgroundColor: "rgba(239, 68, 68, 0.18)",
-                                border: "1px solid rgba(239, 68, 68, 0.5)",
-                                borderRadius: "0",
-                                padding: "8px 10px",
-                                marginBottom: "0",
-                                fontSize: "12px",
-                              }}
-                            >
-                              {message.text}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <span>No negative individual trends at the current checkpoint.</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
           </Panel>
@@ -3061,7 +3354,6 @@ export default function App() {
             <div className="panel shared-note-basic-panel">
               <div className="section-header">
                 <h2>Shared Notes</h2>
-                <span>Live server-backed note for every client</span>
               </div>
               {sharedNotePanelBody}
             </div>

@@ -4,48 +4,39 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$repo_root"
 
-venv_python=".venv/bin/python"
-requirements_file="requirements.txt"
-stamp_file=".venv/.requirements.sha256"
+VENV_PYTHON=".venv/bin/python"
+REQ_FILE="requirements.txt"
+STAMP_FILE=".venv/.requirements.sha256"
 
-if [[ ! -x "$venv_python" ]]; then
-  if ! command -v python3 >/dev/null 2>&1; then
-    echo "Error: python3 not found in PATH." >&2
-    exit 1
-  fi
-  echo "Creating Python venv at .venv/ ..."
-  python3 -m venv .venv
-fi
-
-if [[ ! -f "$requirements_file" ]]; then
-  echo "Error: $requirements_file not found (expected at repo root)." >&2
+PYTHON_BIN=""
+if command -v python3 >/dev/null 2>&1; then
+  PYTHON_BIN="python3"
+elif command -v python >/dev/null 2>&1; then
+  PYTHON_BIN="python"
+else
+  echo "Error: python not found in PATH."
   exit 1
 fi
 
-current_hash="$(
-  if command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 "$requirements_file" | awk '{print $1}'
-  elif command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$requirements_file" | awk '{print $1}'
-  else
-    "$venv_python" - <<'PY'
-import hashlib, pathlib
-p = pathlib.Path("requirements.txt")
-print(hashlib.sha256(p.read_bytes()).hexdigest())
-PY
-  fi
-)"
-
-installed_hash=""
-if [[ -f "$stamp_file" ]]; then
-  installed_hash="$(cat "$stamp_file" || true)"
+if [ ! -x "$VENV_PYTHON" ]; then
+  echo "Creating Python venv at .venv/ ..."
+  "$PYTHON_BIN" -m venv .venv
 fi
 
-if [[ "$current_hash" != "$installed_hash" ]]; then
-  echo "Installing Python dependencies from $requirements_file ..."
-  "$venv_python" -m pip install --upgrade pip >/dev/null
-  "$venv_python" -m pip install -r "$requirements_file"
-  mkdir -p "$(dirname "$stamp_file")"
-  printf "%s" "$current_hash" >"$stamp_file"
+if [ ! -f "$REQ_FILE" ]; then
+  echo "Error: $REQ_FILE not found (expected at repo root)."
+  exit 1
 fi
 
+CURRENT_HASH="$($VENV_PYTHON -c "import hashlib, pathlib; print(hashlib.sha256(pathlib.Path('$REQ_FILE').read_bytes()).hexdigest())")"
+INSTALLED_HASH=""
+if [ -f "$STAMP_FILE" ]; then
+  INSTALLED_HASH="$(cat "$STAMP_FILE")"
+fi
+
+if [ "$CURRENT_HASH" != "$INSTALLED_HASH" ]; then
+  echo "Installing Python dependencies from $REQ_FILE ..."
+  "$VENV_PYTHON" -m pip install --upgrade pip >/dev/null
+  "$VENV_PYTHON" -m pip install -r "$REQ_FILE"
+  echo "$CURRENT_HASH" > "$STAMP_FILE"
+fi
