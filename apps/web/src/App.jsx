@@ -1,3 +1,4 @@
+import logo from './logo.png'
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
@@ -2429,8 +2430,8 @@ export default function App() {
     <div className="app-shell">
       <div className="top-app-bar">
         <div className="top-app-bar-left">
-          <div className="logo-slot" aria-label="Logo placeholder" />
-          <h1>Basketball Live Analytics</h1>
+          <img src={logo} alt="Dashboard Logo" className="logo-slot" />
+          <h1>GSAC Basketball Live Analytics Dashboard</h1>
           {isAdvancedView ? (
             <div className="tabs-dropdown">
               <button
