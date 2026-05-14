@@ -102,7 +102,23 @@ PDF_TEAM_FILES: Dict[str, str] = {
     "ucsd": "ucsd-season-stats.pdf",
     "28": "ucsd-season-stats.pdf",
     "ucr": "ucr-season-stats.pdf",
-    "ucsd": "ucsd-season-stats.pdf",
+    "27": "ucr-season-stats.pdf",
+    "uci": "uci-season-stats.pdf",
+    "300": "uci-season-stats.pdf",
+    "ucd": "ucd-season-stats.pdf",
+    "302": "ucd-season-stats.pdf",
+    "calpoly": "calpoly-season-stats.pdf",
+    "13": "calpoly-season-stats.pdf",
+    "csub": "csub-season-stats.pdf",
+    "304": "csub-season-stats.pdf",
+    "csuf": "csuf-season-stats.pdf",
+    "305": "csuf-season-stats.pdf",
+    "csun": "csun-season-stats.pdf",
+    "306": "csun-season-stats.pdf",
+    "lbsu": "lbsu-season-stats.pdf",
+    "299": "lbsu-season-stats.pdf",
+    "hawaii": "hawaii-season-stats.pdf",
+    "62": "hawaii-season-stats.pdf"
 }
 PDF_TEAM_NAMES: Dict[str, str] = {
     "ucsb": "UC Santa Barbara",
@@ -110,7 +126,23 @@ PDF_TEAM_NAMES: Dict[str, str] = {
     "ucsd": "UC San Diego",
     "28": "UC San Diego",
     "ucr": "UC Riverside",
-    "ucsd": "UC San Diego"
+    "27": "UC Riverside",
+    "uci": "UC Irvine",
+    "300": "UC Irvine",
+    "ucd": "UC Davis",
+    "302": "UC Davis",
+    "calpoly": "Cal Poly",
+    "13": "Cal Poly",
+    "csub": "CSU Bakersfield",
+    "304": "CSU Bakersfield",
+    "csuf": "CSU Fullerton",
+    "305": "CSU Fullerton",
+    "csun": "CSUN",
+    "306": "CSUN",
+    "lbsu": "Long Beach State",
+    "299": "Long Beach State",
+    "hawaii": "Hawaii",
+    "62": "Hawaii"
 }
 
 # Sentinel values for computed columns in PLAYER_TABLE_CONFIG
@@ -2905,18 +2937,33 @@ class ApiHandler(BaseHTTPRequestHandler):
                 query = urlparse(self.path).query.lower()
                 force = any(token in query for token in ("force=1", "refresh=1", "force=true", "refresh=true"))
                 payload = fetch_espn_teams(force_refresh=force)
-                # Ensure PDF-sourced opponent (UCR) is in the list for Data tab
+                
                 teams = list(payload.get("teams") or [])
-                seen_ids = {t.get("team_id") for t in teams}
-                if "ucr" not in seen_ids:
-                    teams.append({
-                        "team_id": "ucr",
-                        "school_name": "UC Riverside",
-                        "abbreviation": "UCR",
-                        "team_ref": "",
-                    })
-                    teams.sort(key=lambda t: (t.get("school_name", ""), t.get("team_id", "")))
-                    payload = {**payload, "teams": teams}
+                seen_ids = {str(t.get("team_id")) for t in teams}
+                
+                custom_pdf_teams = [
+                    {"id": "ucr", "name": "UC Riverside", "abbr": "UCR"},
+                    {"id": "ucsd", "name": "UC San Diego", "abbr": "UCSD"},
+                    {"id": "uci", "name": "UC Irvine", "abbr": "UCI"},
+                    {"id": "ucd", "name": "UC Davis", "abbr": "UCD"},
+                    {"id": "calpoly", "name": "Cal Poly", "abbr": "CP"},
+                    {"id": "csub", "name": "CSU Bakersfield", "abbr": "CSUB"},
+                    {"id": "csuf", "name": "CSU Fullerton", "abbr": "CSUF"},
+                    {"id": "csun", "name": "CSUN", "abbr": "CSUN"},
+                    {"id": "lbsu", "name": "Long Beach State", "abbr": "LBSU"},
+                    {"id": "hawaii", "name": "Hawaii", "abbr": "HAW"}
+                ]
+                for ct in custom_pdf_teams:
+                    if ct["id"] not in seen_ids:
+                        teams.append({
+                            "team_id": ct["id"],
+                            "school_name": ct["name"],
+                            "abbreviation": ct["abbr"],
+                            "team_ref": "",
+                        })
+                        
+                teams.sort(key=lambda t: (t.get("school_name", ""), t.get("team_id", "")))
+                payload = {**payload, "teams": teams}
                 self._send_json(200, payload)
             except Exception as exc:  # noqa: BLE001
                 self._send_json(500, {"error": str(exc)})
