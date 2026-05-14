@@ -53,6 +53,20 @@ const TRENDS_STAT_THRESHOLDS_TEAM = [
   { stat_key: "turnovers", value: 0.3 },
   { stat_key: "fouls", value: 0.43 },
 ];
+const BIG_WEST_TEAM_IDS = new Set([
+  "2540", // UC Santa Barbara
+  "300",  // UC Irvine
+  "27",   // UC Riverside
+  "28",   // UC San Diego
+  "302",  // UC Davis
+  "13",   // Cal Poly
+  "304",  // CSU Bakersfield
+  "305",  // CSU Fullerton
+  "306",  // CSUN
+  "299",  // Long Beach State
+  "62",   // Hawaii
+  "ucsb", "uci", "ucr", "ucsd", "ucd", "calpoly", "csub", "csuf", "csun", "lbsu", "hawaii"
+]);
 
 const TRENDS_STAT_THRESHOLDS_PLAYER = [
   { stat_key: "points", value: 0.4 },
@@ -2567,7 +2581,10 @@ export default function App() {
                       <select value={opponentTeamId} onChange={(e) => setOpponentTeamId(e.target.value)}>
                         <option value="">Select ESPN team</option>
                         {espnTeams
-                          .filter((team) => normalizeTeamIdInput(team.team_id) !== UCSB_TEAM_ID)
+                          .filter((team) => {
+                             const id = normalizeTeamIdInput(team.team_id);
+                             return id !== UCSB_TEAM_ID && BIG_WEST_TEAM_IDS.has(id);
+                          })
                           .map((team) => (
                             <option key={team.team_id} value={team.team_id}>
                               {team.school_name} ({team.team_id})
