@@ -189,7 +189,10 @@ DEFAULT_ESPN_TEAMS = [
     },
 ]
 
-
+def process_live_feed(raw_data):
+    df = pd.read_json(raw_data)
+    return df
+    
 def load_dotenv(path: Path) -> None:
     if not path.exists():
         return
