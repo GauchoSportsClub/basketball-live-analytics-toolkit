@@ -12,6 +12,8 @@ import {
 } from "./pbpFilters";
 import { evidenceLabel, resolveEvidenceTarget } from "./evidenceNavigation";
 
+import Heatmap from "./components/Heatmap/Heatmap";
+
 function CollapseButton({ panelRef, collapsed, onCollapsedChange, title }) {
   return (
     <button
@@ -1271,6 +1273,7 @@ export default function App() {
     sharedNotes: true,
     playerPerformance: true,
   });
+  const [activePage, setActivePage] = useState("main");
   const [activeSeasonSide, setActiveSeasonSide] = useState("ucsb");
   const [seasonDataCollapsed, setSeasonDataCollapsed] = useState(false);
   const [gameDataCollapsed, setGameDataCollapsed] = useState(false);
@@ -2611,17 +2614,32 @@ export default function App() {
           </div>
         ) : null}
         <div className="top-app-bar-right">
-          <span>{isAdvancedView ? "Advanced View" : "Basic View"}</span>
           <button
             type="button"
             className="neutral"
-            onClick={() => setIsAdvancedView((prev) => !prev)}
+            onClick={() => setActivePage((prev) => prev === "heatmap" ? "main" : "heatmap")}
           >
-            {isAdvancedView ? "Switch to Basic View" : "Switch to Advanced View"}
+            {activePage === "heatmap" ? "Back to Dashboard" : "Shot Heatmap"}
           </button>
+          {activePage !== "heatmap" ? (
+            <>
+              <span>{isAdvancedView ? "Advanced View" : "Basic View"}</span>
+              <button
+                type="button"
+                className="neutral"
+                onClick={() => setIsAdvancedView((prev) => !prev)}
+              >
+                {isAdvancedView ? "Switch to Basic View" : "Switch to Advanced View"}
+              </button>
+            </>
+          ) : null}
         </div>
       </div>
-      {isAdvancedView ? (
+      {activePage === "heatmap" ? (
+        <div style={{ flex: 1, minHeight: 0, overflow: "auto", display: "flex", flexDirection: "column" }}>
+          <Heatmap gameId={pbpGameId} />
+        </div>
+      ) : isAdvancedView ? (
         hasAdvancedPanels ? (
           <PanelGroup direction="horizontal" key="advanced-view">
             {showGameData ? (
