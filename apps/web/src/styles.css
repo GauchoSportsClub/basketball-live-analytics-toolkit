@@ -68,6 +68,13 @@ body,
     align-items: center;
     gap: 10px;
     min-width: 0;
+    flex: 0 1 auto;
+}
+
+.top-app-bar-middle {
+    flex: 1 1 auto;
+    display: flex;
+    justify-content: center;
 }
 
 .logo-slot {
@@ -93,11 +100,88 @@ body,
     gap: 10px;
     flex-wrap: wrap;
     justify-content: flex-end;
+    flex: 0 0 auto;
 }
 
 .top-app-bar-right span {
     font-size: 0.9rem;
     color: var(--muted);
+}
+
+.top-bar-controls {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.top-bar-controls-main {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.top-bar-controls label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.top-bar-controls .label-inline {
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+.top-bar-controls select {
+    padding: var(--btn-pad-y) var(--btn-pad-x);
+    font-size: var(--btn-font-size);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel);
+    color: var(--ink);
+}
+
+.top-bar-auto-refresh {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.top-bar-auto-refresh input[type="number"] {
+    width: 76px;
+}
+
+.tabs-dropdown {
+    position: relative;
+}
+
+.tabs-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 180px;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #ffffff;
+    box-shadow: 0 12px 24px rgba(30, 40, 30, 0.12);
+    display: grid;
+    gap: 6px;
+    z-index: 40;
+}
+
+.tabs-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    color: var(--muted);
+}
+
+.tabs-dropdown-item input {
+    margin: 0;
 }
 
 .panel {
@@ -112,6 +196,41 @@ body,
     display: flex;
     flex-direction: column;
     min-height: 0;
+}
+
+/* Modern Card Container for the Story */
+.player-story-card {
+    background: #ffffff;
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    padding: 20px;
+    margin: 12px;
+    border: 1px solid var(--line);
+}
+
+/* Custom Tooltip Styling */
+.custom-tooltip {
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(4px);
+    border: 1px solid var(--line);
+    padding: 10px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.custom-tooltip .label {
+    font-weight: 700;
+    font-size: 0.75rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.custom-tooltip .value {
+    font-size: 1.1rem;
+    color: var(--accent);
+    font-weight: 800;
 }
 
 .section-header {
@@ -460,6 +579,24 @@ textarea {
     font-size: 0.85rem;
 }
 
+.trends-auto-update {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+
+.trends-auto-update label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+}
+
+.trends-auto-update input[type="number"] {
+    width: 80px;
+}
+
 .trends-threshold-controls {
     display: flex;
     flex-wrap: wrap;
@@ -471,6 +608,53 @@ textarea {
     display: grid;
     gap: 4px;
     min-width: 220px;
+    color: var(--muted);
+}
+
+.basic-trends-merged {
+    padding: 10px;
+    display: grid;
+    gap: 12px;
+}
+
+.basic-trends-section {
+    display: grid;
+    gap: 6px;
+}
+
+.basic-trends-section-title {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--muted);
+}
+
+.basic-trends-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 6px;
+}
+
+.basic-trends-item {
+    border-radius: 0;
+    padding: 8px 10px;
+    font-size: 12px;
+    margin: 0;
+}
+
+.basic-trends-item.positive {
+    background-color: rgba(34, 197, 94, 0.18);
+    border: 1px solid rgba(34, 197, 94, 0.5);
+}
+
+.basic-trends-item.negative {
+    background-color: rgba(239, 68, 68, 0.18);
+    border: 1px solid rgba(239, 68, 68, 0.5);
+}
+
+.basic-trends-empty {
+    font-size: 0.8rem;
     color: var(--muted);
 }
 

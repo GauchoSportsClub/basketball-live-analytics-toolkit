@@ -104,7 +104,23 @@ PDF_TEAM_FILES: Dict[str, str] = {
     "ucsd": "ucsd-season-stats.pdf",
     "28": "ucsd-season-stats.pdf",
     "ucr": "ucr-season-stats.pdf",
-    "ucsd": "ucsd-season-stats.pdf",
+    "27": "ucr-season-stats.pdf",
+    "uci": "uci-season-stats.pdf",
+    "300": "uci-season-stats.pdf",
+    "ucd": "ucd-season-stats.pdf",
+    "302": "ucd-season-stats.pdf",
+    "calpoly": "calpoly-season-stats.pdf",
+    "13": "calpoly-season-stats.pdf",
+    "csub": "csub-season-stats.pdf",
+    "304": "csub-season-stats.pdf",
+    "csuf": "csuf-season-stats.pdf",
+    "305": "csuf-season-stats.pdf",
+    "csun": "csun-season-stats.pdf",
+    "306": "csun-season-stats.pdf",
+    "lbsu": "lbsu-season-stats.pdf",
+    "299": "lbsu-season-stats.pdf",
+    "hawaii": "hawaii-season-stats.pdf",
+    "62": "hawaii-season-stats.pdf"
 }
 PDF_TEAM_NAMES: Dict[str, str] = {
     "ucsb": "UC Santa Barbara",
@@ -112,7 +128,23 @@ PDF_TEAM_NAMES: Dict[str, str] = {
     "ucsd": "UC San Diego",
     "28": "UC San Diego",
     "ucr": "UC Riverside",
-    "ucsd": "UC San Diego"
+    "27": "UC Riverside",
+    "uci": "UC Irvine",
+    "300": "UC Irvine",
+    "ucd": "UC Davis",
+    "302": "UC Davis",
+    "calpoly": "Cal Poly",
+    "13": "Cal Poly",
+    "csub": "CSU Bakersfield",
+    "304": "CSU Bakersfield",
+    "csuf": "CSU Fullerton",
+    "305": "CSU Fullerton",
+    "csun": "CSUN",
+    "306": "CSUN",
+    "lbsu": "Long Beach State",
+    "299": "Long Beach State",
+    "hawaii": "Hawaii",
+    "62": "Hawaii"
 }
 
 # Sentinel values for computed columns in PLAYER_TABLE_CONFIG
@@ -1278,7 +1310,7 @@ def _infer_pbp_opponent_team_id(rows: Sequence[Dict[str, Any]], ucsb_id: str) ->
 
 
 def _pbp_display_columns(columns: Sequence[str]) -> List[str]:
-    hidden = {"id", "sequence", "scoring_play", "shooting_play", "wallclock"}
+    hidden = {"id", "sequence", "wallclock"}
     filtered = [column for column in columns if column not in hidden]
     preferred = ["team_id", "type", "text"]
     ordered: List[str] = [column for column in preferred if column in filtered]
@@ -1372,9 +1404,18 @@ LIVE_TEAM_COLUMNS = [
 ]
 LIVE_PLAYER_COLUMNS = [
     "row_key", "team_id", "Player", "GP", "MIN", "PTS", "REB", "AST",
-    "STL", "BLK", "TO", "FG_PCT", "FG3_PCT", "FT_PCT", "PF",
+    "STL", "BLK", "TO", "FG_PCT", "FG3_PCT", "FT_PCT", "PF", "PIE",
 ]
 
+
+def calculate_pie_numerator(s: Dict[str, int]) -> float:
+    reb = s.get("oreb", 0) + s.get("dreb", 0)
+    return(
+        s.get("pts", 0) + s.get("fgm", 0) + s.get("ftm", 0) 
+        - s.get("fga", 0) - s.get("fta", 0) + s.get("dreb", 0) 
+        + (0.5 * s.get("oreb", 0)) + s.get("ast", 0) + s.get("stl", 0) 
+        + (0.5 * s.get("blk", 0)) - s.get("pf", 0) - s.get("to", 0)
+    )
 
 def _normalize_team_id_safe(value: Optional[str]) -> Optional[str]:
     """Return normalized team_id or None if value is empty/invalid (avoids ValueError)."""
@@ -1680,7 +1721,7 @@ def _live_team_rows(team_id: str, rows: List[Dict[str, Any]]) -> List[Dict[str, 
     return out
 
 
-def _live_player_rows(team_id: str, rows: List[Dict[str, Any]], minutes_map: Dict[str, str] = None) -> List[Dict[str, Any]]:
+def _live_player_rows(team_id: str, rows: List[Dict[str, Any]], minutes_map: Dict[str, str] = None, game_pie_denom: float = 1.0) -> List[Dict[str, Any]]:
     if minutes_map is None:
         minutes_map = {}
     """Build player-level stat rows from PBP for one team. Columns match season player table."""
@@ -1712,6 +1753,8 @@ def _live_player_rows(team_id: str, rows: List[Dict[str, Any]], minutes_map: Dic
         fg3a = int(stats.get("3pa", 0))
         ftm = int(stats.get("ftm", 0))
         fta = int(stats.get("fta", 0))
+        player_num = calculate_pie_numerator(stats)
+        pie_pct = (player_num / game_pie_denom) if game_pie_denom > 0 else 0
         rk = unique_row_key(f"live_{tid}_player_{aid}", seen)
         out.append({
             "row_key": rk,
@@ -1729,6 +1772,7 @@ def _live_player_rows(team_id: str, rows: List[Dict[str, Any]], minutes_map: Dic
             "FG3_PCT": _format_pct(fg3m, fg3a),
             "FT_PCT": _format_pct(ftm, fta),
             "PF": str(pf),
+            "PIE": f"{pie_pct:.1%}"
         })
     return out
 
@@ -1745,6 +1789,8 @@ def build_live_stats_from_pbp(
 
     """Build four datasets (ucsb_team, ucsb_players, opponent_team, opponent_players) from PBP only."""
     rows = load_pbp_rows(game_id=game_id)
+    game_stats = _compute_live_team_stats(rows)
+    game_pie_denom = calculate_pie_numerator(game_stats)
     ucsb_id = _normalize_team_id_safe(ucsb_team_id or DEFAULT_UCSB_TEAM_ID) or normalize_team_id(DEFAULT_UCSB_TEAM_ID)
     team_ids_in_pbp = set()
     for r in rows:
@@ -1768,7 +1814,7 @@ def build_live_stats_from_pbp(
             rws = _live_team_rows(tid, rows)
             cols = list(LIVE_TEAM_COLUMNS)
         else:
-            rws = _live_player_rows(tid, rows, minutes_map)
+            rws = _live_player_rows(tid, rows, minutes_map, game_pie_denom=game_pie_denom)
             cols = list(LIVE_PLAYER_COLUMNS)
         return {"columns": cols, "rows": rws}
 
@@ -2895,18 +2941,33 @@ class ApiHandler(BaseHTTPRequestHandler):
                 query = urlparse(self.path).query.lower()
                 force = any(token in query for token in ("force=1", "refresh=1", "force=true", "refresh=true"))
                 payload = fetch_espn_teams(force_refresh=force)
-                # Ensure PDF-sourced opponent (UCR) is in the list for Data tab
+                
                 teams = list(payload.get("teams") or [])
-                seen_ids = {t.get("team_id") for t in teams}
-                if "ucr" not in seen_ids:
-                    teams.append({
-                        "team_id": "ucr",
-                        "school_name": "UC Riverside",
-                        "abbreviation": "UCR",
-                        "team_ref": "",
-                    })
-                    teams.sort(key=lambda t: (t.get("school_name", ""), t.get("team_id", "")))
-                    payload = {**payload, "teams": teams}
+                seen_ids = {str(t.get("team_id")) for t in teams}
+                
+                custom_pdf_teams = [
+                    {"id": "ucr", "name": "UC Riverside", "abbr": "UCR"},
+                    {"id": "ucsd", "name": "UC San Diego", "abbr": "UCSD"},
+                    {"id": "uci", "name": "UC Irvine", "abbr": "UCI"},
+                    {"id": "ucd", "name": "UC Davis", "abbr": "UCD"},
+                    {"id": "calpoly", "name": "Cal Poly", "abbr": "CP"},
+                    {"id": "csub", "name": "CSU Bakersfield", "abbr": "CSUB"},
+                    {"id": "csuf", "name": "CSU Fullerton", "abbr": "CSUF"},
+                    {"id": "csun", "name": "CSUN", "abbr": "CSUN"},
+                    {"id": "lbsu", "name": "Long Beach State", "abbr": "LBSU"},
+                    {"id": "hawaii", "name": "Hawaii", "abbr": "HAW"}
+                ]
+                for ct in custom_pdf_teams:
+                    if ct["id"] not in seen_ids:
+                        teams.append({
+                            "team_id": ct["id"],
+                            "school_name": ct["name"],
+                            "abbreviation": ct["abbr"],
+                            "team_ref": "",
+                        })
+                        
+                teams.sort(key=lambda t: (t.get("school_name", ""), t.get("team_id", "")))
+                payload = {**payload, "teams": teams}
                 self._send_json(200, payload)
             except Exception as exc:  # noqa: BLE001
                 self._send_json(500, {"error": str(exc)})
@@ -2946,12 +3007,28 @@ class ApiHandler(BaseHTTPRequestHandler):
 
         if path == '/api/gameids':
             try:
-                games = fetch_json(f'http://sports.core.api.espn.com/v2/sports/basketball/leagues/mens-college-basketball/seasons/2026/teams/{DEFAULT_UCSB_TEAM_ID}/events?limit=50&lang=en&region=us')
-                r = []
-                for item in games['items']:
-                    r.append(re.search(r'/events/(40\d+)', item.get('$ref', 'NONONO')).group(1))
-                self._send_json(200, {"games": r})
-            except Exception as exc:  # noqa: BLE001
+                events_list = fetch_json(f'http://sports.core.api.espn.com/v2/sports/basketball/leagues/mens-college-basketball/seasons/2026/teams/{DEFAULT_UCSB_TEAM_ID}/events?limit=50&lang=en&region=us')
+                
+                games_with_labels = []
+                for item in events_list.get('items', [])[-15:]:
+                    ref_url = item.get('$ref')
+                    if not ref_url:
+                        continue
+                    
+                    game_id_match = re.search(r'/events/(40\d+)', ref_url)
+                    if game_id_match:
+                        game_id = game_id_match.group(1)
+                        try:
+                            event_data = fetch_json(ref_url)
+                            label = event_data.get('shortName', game_id)
+                            games_with_labels.append({"id": game_id, "label": label})
+                        except:
+                            games_with_labels.append({"id": game_id, "label": game_id})
+                
+                # Sort most recent to top
+                games_with_labels.reverse()
+                self._send_json(200, {"games": games_with_labels})
+            except Exception as exc:
                 self._send_json(500, {"error": str(exc)})
             return
 

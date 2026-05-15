@@ -1,5 +1,7 @@
+import logo from './logo.png'
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import {
   buildPbpFilterQuery,
   canApplyPbpAdvancedFilters,
@@ -8,6 +10,7 @@ import {
   pbpAdvancedFiltersEqual,
   validatePbpAdvancedFilters,
 } from "./pbpFilters";
+import { evidenceLabel, resolveEvidenceTarget } from "./evidenceNavigation";
 
 function CollapseButton({ panelRef, collapsed, onCollapsedChange, title }) {
   return (
@@ -30,17 +33,11 @@ function CollapseButton({ panelRef, collapsed, onCollapsedChange, title }) {
     </button>
   );
 }
-import { evidenceLabel, resolveEvidenceTarget } from "./evidenceNavigation";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
 
 const UCSB_TEAM_ID = "2540";
 const PBP_TEAM_ID = "pbp";
-const PBP_GAME_OPTIONS = [
-  { value: "401809115", label: "401809115" },
-  { value: "401826049", label: "401826049" },
-  { value: "401809104", label: "401809104" },
-];
 const HIDDEN_COLUMNS = new Set(["row_key"]);
 const TRENDS_STAT_THRESHOLDS_TEAM = [
   { stat_key: "points", value: 1.8 },
@@ -72,6 +69,21 @@ const TRENDS_STAT_THRESHOLDS_PLAYER = [
   { stat_key: "fouls", value: 0.1 },
 ];
 
+const BIG_WEST_TEAM_IDS = new Set([
+  "2540", // UC Santa Barbara
+  "300",  // UC Irvine
+  "27",   // UC Riverside
+  "28",   // UC San Diego
+  "302",  // UC Davis
+  "13",   // Cal Poly
+  "304",  // CSU Bakersfield
+  "305",  // CSU Fullerton
+  "306",  // CSUN
+  "299",  // Long Beach State
+  "62",   // Hawaii
+  "ucsb", "uci", "ucr", "ucsd", "ucd", "calpoly", "csub", "csuf", "csun", "lbsu", "hawaii"
+]);
+
 const DEFAULT_TABLE_STATE = {
   filter: "",
   sortColumn: "",
@@ -95,6 +107,201 @@ function comparableValue(value) {
     return { type: "number", value: numeric };
   }
   return { type: "string", value: normalized.toLowerCase() };
+}
+
+function PlayerPerformanceStory({ playerTimeline, teamName, seasonAvg }) {
+  const [activeStat, setActiveStat] = useState("points");
+
+  if (!playerTimeline || !playerTimeline.stats) {
+    return (
+      <div className="placeholder" style={{ padding: "40px", textAlign: "center" }}>
+        Select a player to visualize their game impact.
+      </div>
+    );
+  }
+
+  const statEntry = playerTimeline.stats.find((s) => s.stat_key === activeStat);
+  const chartData = [
+    { time: 0, total: 0, displayTime: "0:00" },
+    ...(statEntry?.events || []).map((event) => ({
+      time: event.timestamp || 0,
+      total: event.total || 0,
+      displayTime: `${event.period}H ${Math.floor(event.timestamp / 60)}:${String(
+        event.timestamp % 60,
+      ).padStart(2, "0")}`,
+    })),
+  ];
+
+  const CustomTooltip = ({ active, payload }) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="custom-tooltip">
+          <span className="label">{payload[0].payload.displayTime}</span>
+          <span className="value">
+            {payload[0].value} {activeStat.toUpperCase()}
+          </span>
+        </div>
+      );
+    }
+    return null;
+  };
+
+  return (
+    <div className="player-story-card">
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "flex-start",
+          marginBottom: "24px",
+        }}
+      >
+        <div>
+          <h3
+            style={{
+              margin: 0,
+              fontSize: "1.2rem",
+              fontWeight: 800,
+              color: "var(--ink)",
+            }}
+          >
+            {playerTimeline.player_name}
+          </h3>
+          <span
+            style={{ color: "var(--muted)", fontSize: "0.85rem", fontWeight: 500 }}
+          >
+            {teamName}
+          </span>
+        </div>
+        <select
+          value={activeStat}
+          onChange={(e) => setActiveStat(e.target.value)}
+          className="stat-selector"
+          style={{
+            padding: "6px 12px",
+            borderRadius: "10px",
+            background: "var(--panel-strong)",
+          }}
+        >
+          <option value="points">Points</option>
+          <option value="rebounds">Rebounds</option>
+          <option value="assists">Assists</option>
+        </select>
+      </div>
+      <div style={{ width: "100%", height: 280 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={chartData}>
+            <defs>
+              <linearGradient id="colorStat" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="var(--accent)" stopOpacity={0.3} />
+                <stop offset="95%" stopColor="var(--accent)" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid
+              strokeDasharray="3 3"
+              vertical={false}
+              stroke="rgba(0,0,0,0.05)"
+            />
+            <XAxis dataKey="time" hide />
+            <YAxis
+              axisLine={false}
+              tickLine={false}
+              tick={{ fill: "var(--muted)", fontSize: 11 }}
+              allowDecimals={false}
+            />
+            <Tooltip content={<CustomTooltip />} />
+
+            {seasonAvg && (
+              <ReferenceLine
+                y={seasonAvg}
+                stroke="var(--warning)"
+                strokeDasharray="5 5"
+                label={{
+                  position: "right",
+                  value: "Season Avg",
+                  fill: "var(--warning)",
+                  fontSize: 10,
+                }}
+              />
+            )}
+
+            <Area
+              type="monotone"
+              dataKey="total"
+              stroke="var(--accent)"
+              strokeWidth={3}
+              fillOpacity={1}
+              fill="url(#colorStat)"
+              animationDuration={1200}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+      <div style={{ marginTop: "16px", display: "flex", gap: "12px" }}>
+        <div className="stat-summary-chip">
+          <span
+            style={{
+              fontSize: "0.7rem",
+              color: "var(--muted)",
+              textTransform: "uppercase",
+            }}
+          >
+            Current Total
+          </span>
+          <div style={{ fontSize: "1.1rem", fontWeight: 700 }}>
+            {chartData[chartData.length - 1].total}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TeamPieComparison({ liveStats, teamName }) {
+  const chartData = useMemo(() => {
+    return (liveStats?.rows || [])
+      .map((row) => ({
+        name: row.Player,
+        pie: parseFloat(row.PIE) || 0,
+      }))
+      .sort((a, b) => b.pie - a.pie);
+  }, [liveStats]);
+
+  return (
+    <div className="player-story-card" style={{ height: "100%", padding: "20px" }}>
+      <h3 style={{ margin: "0 0 20px 0", fontSize: "1.1rem", fontWeight: 800 }}>
+        {teamName} Impact Efficiency (PIE)
+      </h3>
+      <div style={{ width: "100%", height: 400 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartData} layout="vertical" margin={{ left: 20, right: 30 }}>
+            <CartesianGrid
+              strokeDasharray="3 3"
+              horizontal={true}
+              vertical={false}
+              stroke="rgba(0,0,0,0.05)"
+            />
+            <XAxis type="number" domain={[0, "auto"]} hide />
+            <YAxis
+              dataKey="name"
+              type="category"
+              width={120}
+              tick={{ fill: "var(--ink)", fontSize: 11, fontWeight: 600 }}
+            />
+            <Tooltip
+              formatter={(value) => [`${value.toFixed(1)}%`, "PIE"]}
+              contentStyle={{
+                borderRadius: "8px",
+                border: "none",
+                boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+              }}
+            />
+            <Bar dataKey="pie" fill="var(--accent)" radius={[0, 4, 4, 0]} barSize={20} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
 }
 
 async function fetchJson(url, options = {}, retries = 0) {
@@ -180,6 +387,152 @@ function normalizeTrendPeriod(periodValue) {
   }
   return "2";
 }
+
+function getPointsFromPbp(row) {
+  const text = String(row.text || "").toLowerCase();
+  const playType = String(row.type || "").toLowerCase();
+  const actorId = String(row.athlete_id || "").trim();
+
+  if (!actorId) return 0;
+  if (text.includes("miss")) return 0;
+
+  if (playType === "madefreethrow" || /makes .*free throw/.test(text)) {
+    return 1;
+  }
+
+  if (
+    /makes .*three point/.test(text) ||
+    /makes .*three pointer/.test(text) ||
+    /makes .*3-pt/.test(text) ||
+    /makes .*3pt/.test(text)
+  ) {
+    return 3;
+  }
+
+  if (text.includes("makes")) {
+    return 2;
+  }
+
+  return 0;
+}
+
+
+function buildCustomPlayerTimeline(rows, playerId, playerName, teamId) {
+  if (!playerId || !rows || rows.length === 0) return null;
+
+  let totalPoints = 0;
+  let totalRebounds = 0;
+  let totalAssists = 0;
+  const pointEvents = [];
+  const reboundEvents = [];
+  const assistEvents = [];
+
+  rows.forEach((row) => {
+    const rowActorId = String(row.athlete_id || "").trim();
+    const rowAssistId = String(row.assist_athlete_id || "").trim();
+    const timestamp = halfTimestampSeconds(row);
+    const period = normalizeTrendPeriod(row.period);
+
+    if (rowActorId === String(playerId)) {
+      // Points
+      const pts = getPointsFromPbp(row);
+      if (pts > 0) {
+        totalPoints += pts;
+        pointEvents.push({ timestamp, period, increment: pts, total: totalPoints });
+      }
+
+      // Rebounds
+      const playType = String(row.type || "");
+      if (playType === "Offensive Rebound" || playType === "Defensive Rebound") {
+        totalRebounds += 1;
+        reboundEvents.push({ timestamp, period, increment: 1, total: totalRebounds });
+      }
+    }
+
+    if (rowAssistId === String(playerId) && Boolean(row.scoring_play)) {
+      totalAssists += 1;
+      assistEvents.push({ timestamp, period, increment: 1, total: totalAssists });
+    }
+  });
+
+  return {
+    player_name: playerName || "Selected Player",
+    team_id: teamId || "",
+    stats: [
+      { stat_key: "points", events: pointEvents },
+      { stat_key: "rebounds", events: reboundEvents },
+      { stat_key: "assists", events: assistEvents },
+    ],
+  };
+}
+
+function getStatEvents(playerTimeline, statKey) {
+    return (
+        playerTimeline?.stats?.find((stat) => stat.stat_key === statKey)?.events || []
+        );
+    }
+
+function buildWarTimeline(p1Timeline, p2Timeline, player1Name, player2Name) {
+    if (!p1Timeline || !p2Timeline) {
+        return null;
+        }
+    const statKeys = ["points", "rebounds", "assists"];
+    const comparisonStats = statKeys.map((statKey) => {
+        const p1Events = getStatEvents(p1Timeline, statKey);
+        const p2Events = getStatEvents(p2Timeline, statKey);
+        const combinedEvents = [
+            ...p1Events.map((event) => ({
+                ...event,
+                playerKey: "playerOne",
+                })),
+            ...p2Events.map((event) => ({
+                ...event,
+                playerKey: "playerTwo",
+                })),
+            ];
+
+        combinedEvents.sort((a,b) => {
+            const aPeriod = Number(a.period || 0);
+            const bPeriod = Number(b.period || 0);
+
+            if(aPeriod !== bPeriod) {
+                return aPeriod - bPeriod;
+            }
+            return Number(a.timestamp || 0) - Number(b.timestamp || 0);
+        });
+
+        let p1Total = 0;
+        let p2Total = 0;
+        const diffEvents = combinedEvents.map((event) => {
+            const increment = Number(event.increment || 0);
+            if (event.playerKey === "playerOne") {
+                p1Total += increment;
+            } else {
+                p2Total += increment;
+            }
+            return {
+                timestamp: event.timestamp,
+                period: event.period,
+                increment: event.playerKey === "playerOne" ? increment : -increment,
+                total: p1Total - p2Total,
+                p1Total,
+                p2Total
+            };
+        });
+
+        return {
+            stat_key: statKey,
+            events: diffEvents,
+        };
+    });
+
+    return {
+        player_name: `${player1Name || "Player 1"} vs ${player2Name || "Player 2"}`,
+        team_id: "",
+        stats: comparisonStats,
+    };
+
+   }
 
 function parseClockRemainingSeconds(clockValue) {
   const raw = String(clockValue || "").trim();
@@ -594,7 +947,26 @@ function buildPlayerNameMapFromLiveStats(payload) {
   return map;
 }
 
-function DataTable({ columns, rows, state, onChange, extraControls = null }) {
+function getPerformanceColor(liveStats, seasonStatsPer, threshold) {
+ const stat = parseFloat(liveStats);
+  const per_game = parseFloat(seasonStatsPer);
+
+  if (isNaN(stat) || isNaN(per_game) || per_game === 0) {
+      return undefined;
+  }
+
+  const diff = (stat - per_game) / per_game;
+
+  if (diff >= threshold) {
+      return "rgba(0, 255, 0, 0.2)";
+  } else if (diff <= -threshold) {
+      return "rgba(255, 0, 0, 0.2)";
+  }
+
+  return undefined;
+}
+
+function DataTable({ columns, rows, state, onChange, extraControls = null, getRowStyle }) {
   const rowRefs = useRef({});
 
   const sortedRows = useMemo(() => {
@@ -706,6 +1078,8 @@ function DataTable({ columns, rows, state, onChange, extraControls = null }) {
                 row.row_key && row.row_key === state.selectedRowKey;
               const isHighlighted =
                 row.row_key && row.row_key === state.highlightRowKey;
+              const rowStyle = getRowStyle ? getRowStyle(row) : {};
+
               return (
                 <tr
                   key={rowKeyValue}
@@ -715,6 +1089,7 @@ function DataTable({ columns, rows, state, onChange, extraControls = null }) {
                     }
                   }}
                   className={`${isSelected ? "selected" : ""} ${isHighlighted ? "highlighted" : ""}`.trim()}
+                  style={rowStyle}
                   onClick={() =>
                     onChange({
                       selectedRowKey: row.row_key || "",
@@ -767,16 +1142,149 @@ function InsightBubble({
   );
 }
 
+
+function buildScoringEventKey(row, derivedPoints) {
+  const actorId = String(row.athlete_id || "").trim();
+  const period = String(row.period || "").trim();
+  const clock = String(row.clock || "").trim();
+  const playType = String(row.type || "").toLowerCase();
+  const text = String(row.text || "").toLowerCase().trim();
+
+  if (playType === "madefreethrow") {
+    return `${actorId}|${period}|${clock}|ft|${text}`;
+  }
+
+  return `${actorId}|${period}|${clock}|${derivedPoints}`;
+}
+
+function collectPlayerPbpIncrements(row, seenScoringEvents) {
+  const incrementsByPlayer = {};
+  const playType = String(row.type || "");
+  const text = String(row.text || "").toLowerCase();
+  const derivedPoints = getPointsFromPbp(row);
+  const shootingPlay = Boolean(row.shooting_play);
+  const pointsAttempted = Number(row.points_attempted || 0);
+  const actorId = String(row.athlete_id || "").trim();
+  const assistId = String(row.assist_athlete_id || "").trim();
+
+  const isNewScoringEvent =
+    derivedPoints > 0 &&
+    (() => {
+      const eventKey = buildScoringEventKey(row, derivedPoints);
+      if (seenScoringEvents.has(eventKey)) return false;
+      seenScoringEvents.add(eventKey);
+      return true;
+    })();
+
+  if (actorId) {
+    incrementsByPlayer[actorId] = {};
+
+    if (isNewScoringEvent) {
+      incrementsByPlayer[actorId].points = derivedPoints;
+    }
+
+    if (shootingPlay && (pointsAttempted === 2 || pointsAttempted === 3)) {
+      incrementsByPlayer[actorId].field_goals_attempted = 1;
+      if (pointsAttempted === 3) {
+        incrementsByPlayer[actorId].three_pointers_attempted = 1;
+      }
+    }
+
+    if (isNewScoringEvent && (derivedPoints === 2 || derivedPoints === 3)) {
+      incrementsByPlayer[actorId].field_goals_made = 1;
+      if (derivedPoints === 3) {
+        incrementsByPlayer[actorId].three_pointers_made = 1;
+      }
+    }
+
+    if (text.includes("free throw")) {
+      incrementsByPlayer[actorId].free_throws_attempted = 1;
+      if (isNewScoringEvent && derivedPoints === 1) {
+        incrementsByPlayer[actorId].free_throws_made = 1;
+      }
+    }
+
+    if (playType === "Offensive Rebound") {
+      incrementsByPlayer[actorId].offensive_rebounds = 1;
+      incrementsByPlayer[actorId].rebounds = 1;
+    } else if (playType === "Defensive Rebound") {
+      incrementsByPlayer[actorId].defensive_rebounds = 1;
+      incrementsByPlayer[actorId].rebounds = 1;
+    }
+
+    if (playType === "Steal") incrementsByPlayer[actorId].steals = 1;
+    if (playType === "Block Shot") incrementsByPlayer[actorId].blocks = 1;
+    if (playType.toLowerCase().includes("turnover")) incrementsByPlayer[actorId].turnovers = 1;
+    if (playType.toLowerCase().includes("foul")) incrementsByPlayer[actorId].fouls = 1;
+  }
+
+  if (assistId && isNewScoringEvent) {
+    if (!incrementsByPlayer[assistId]) incrementsByPlayer[assistId] = {};
+    incrementsByPlayer[assistId].assists =
+      Number(incrementsByPlayer[assistId].assists || 0) + 1;
+  }
+
+  return incrementsByPlayer;
+}
+
+function parseClock(clockValue) {
+    const clock = String(clockValue || "").trim();
+    const match = clock.match(/^(\d+):(\d{2})$/);
+    if (!match) return 0;
+    const minutes = Number(match[1]);
+    const seconds = Number(match[2]);
+    return minutes *60 + seconds;
+    }
+
+function parsePeriod(periodValue) {
+    const raw = String(periodValue || "").toLowerCase().trim();
+    if (!raw) return 1;
+    if (raw.includes("1")) return 1;
+    if (raw.includes("2")) return 2;
+    if (raw.includes("3")) return 3;
+    if (raw.includes("4")) return 4;
+    const numeric = Number(raw);
+    return Number.isFinite(numeric) && numeric >0 ? numeric : 1;
+    }
+
+function getElapsedGameMinute(row) {
+    const period = parsePeriod(row.period || 1);
+    const clockSeconds = parseClock(row.clock);
+    const Regulation_Period_Seconds = 20 * 60
+    const Overtime_Seconds = 5 * 60
+    let elapsedSeconds = 0;
+    if (period <= 2) {
+        elapsedSeconds = (period - 1) * Regulation_Period_Seconds + (Regulation_Period_Seconds - clockSeconds);
+        } else {
+            elapsedSeconds = 2 * Regulation_Period_Seconds + (period - 3) * Overtime_Seconds + (Overtime_Seconds - clockSeconds);
+            }
+    return Math.floor(elapsedSeconds / 60)
+    }
+
 export default function App() {
   const [isAdvancedView, setIsAdvancedView] = useState(true);
+  const [advancedTabsOpen, setAdvancedTabsOpen] = useState(false);
+  const [advancedTabs, setAdvancedTabs] = useState({
+    seasonData: true,
+    gameData: true,
+    trends: true,
+    sharedNotes: true,
+    playerPerformance: true,
+  });
   const [activeSeasonSide, setActiveSeasonSide] = useState("ucsb");
   const [seasonDataCollapsed, setSeasonDataCollapsed] = useState(false);
   const [gameDataCollapsed, setGameDataCollapsed] = useState(false);
   const [trendsCollapsed, setTrendsCollapsed] = useState(false);
   const [promptCollapsed, setPromptCollapsed] = useState(false);
+  const [selectedStoryPlayerOneId, setSelectedStoryPlayerOneId] = useState("");
+  const [selectedStoryPlayerTwoId, setSelectedStoryPlayerTwoId] = useState("");
+  const [insightsView, setInsightsView] = useState("timeline");
   const [savedCollapsed, setSavedCollapsed] = useState(false);
   const [insightsColumnCollapsed, setInsightsColumnCollapsed] = useState(false);
+  const [performanceMetric, setPerformanceMetric] = useState("PTS");
 
+  const advancedTabsButtonRef = useRef(null);
+  const advancedTabsMenuRef = useRef(null);
   const seasonDataPanelRef = useRef();
   const gameDataPanelRef = useRef();
   const trendsPanelRef = useRef();
@@ -786,6 +1294,8 @@ export default function App() {
   const sharedNoteSaveTimeoutRef = useRef(null);
   const sharedNoteTextRef = useRef("");
   const sharedNoteDirtyRef = useRef(false);
+  const trendsUpdatingRef = useRef(false);
+  const pbpUpdatingRef = useRef(false);
 
   const [opponentTeamId, setOpponentTeamId] = useState("ucr");
   const [espnTeams, setEspnTeams] = useState([]);
@@ -816,6 +1326,9 @@ export default function App() {
     source_url: "",
   });
   const [pbpGameId, setPbpGameId] = useState("401809115");
+  const [pbpGameOptions, setPbpGameOptions] = useState([]);
+  const [pbpAutoRefreshEnabled, setPbpAutoRefreshEnabled] = useState(false);
+  const [pbpAutoRefreshSeconds, setPbpAutoRefreshSeconds] = useState(15);
   const [pbpTableState, setPbpTableState] = useState({
     ...DEFAULT_TABLE_STATE,
   });
@@ -857,12 +1370,18 @@ export default function App() {
   const [trendsCurrentTimestamp, setTrendsCurrentTimestamp] = useState(10 * 60);
   const [trendsCheckpointLabel, setTrendsCheckpointLabel] =
     useState("1st Half 10:00");
+  const [basicTrendsAutoUpdate, setBasicTrendsAutoUpdate] = useState(false);
+  const [basicTrendsAutoSeconds, setBasicTrendsAutoSeconds] = useState(10);
   const [sharedNoteText, setSharedNoteText] = useState("");
   const [sharedNoteUpdatedAt, setSharedNoteUpdatedAt] = useState("");
   const [sharedNoteLoading, setSharedNoteLoading] = useState(true);
   const [sharedNoteSaving, setSharedNoteSaving] = useState(false);
   const [sharedNoteDirty, setSharedNoteDirty] = useState(false);
   const [sharedNoteError, setSharedNoteError] = useState("");
+
+  const [pbpComparePlayer1, setPbpComparePlayer1] = useState("");
+  const [pbpComparePlayer2, setPbpComparePlayer2] = useState("");
+  const [pbpCompareMetric, setPbpCompareMetric] = useState("points");
 
   const [prompt, setPrompt] = useState("");
   const [contextEnabled, setContextEnabled] = useState({
@@ -876,10 +1395,19 @@ export default function App() {
   const [insightLoading, setInsightLoading] = useState(false);
   const [insightError, setInsightError] = useState("");
 
-  const normalizedOpponentTeamId = useMemo(
-    () => normalizeTeamIdInput(opponentTeamId),
-    [opponentTeamId],
-  );
+  const normalizedOpponentTeamId = useMemo(() => normalizeTeamIdInput(opponentTeamId), [opponentTeamId]);
+  const sortedPlayers = useMemo(() => {
+  return Object.entries(trendsPlayerTimelines).sort(([, a], [, b]) => {
+    const aIsUcsb = a.team_id === UCSB_TEAM_ID;
+    const bIsUcsb = b.team_id === UCSB_TEAM_ID;
+
+    if (aIsUcsb && !bIsUcsb) return -1;
+    if (!aIsUcsb && bIsUcsb) return 1;
+
+    return (a.player_name || "").localeCompare(b.player_name || "");
+  });
+}, [trendsPlayerTimelines]);
+
   const teamNameById = useMemo(() => {
     const map = {};
     for (const team of espnTeams) {
@@ -892,6 +1420,172 @@ export default function App() {
     map[UCSB_TEAM_ID] = map[UCSB_TEAM_ID] || "UC Santa Barbara";
     return map;
   }, [espnTeams]);
+
+  const pbpPlayerNameById = useMemo(() => {
+    const map = {};
+    const datasets = [
+      liveStats.ucsb_players?.rows || [],
+      liveStats.opponent_players?.rows || [],
+    ];
+    for (const rows of datasets) {
+      for (const row of rows) {
+        const rowKey = String(row?.row_key || "");
+        const playerName = String(row?.Player || "").trim();
+        const match = rowKey.match(/_player_([A-Za-z0-9_-]+)$/);
+        if (!match || !playerName) continue;
+        map[match[1]] = playerName;
+      }
+    }
+    return map;
+  }, [liveStats]);
+
+  const ucsbPbpRows = useMemo(() => {
+    return (pbpData.rows || []).filter((row) => {
+      const normalized = normalizeTeamIdInput(String(row.team_id || "").trim());
+      return normalized === normalizeTeamIdInput(UCSB_TEAM_ID) || normalized === "ucsb";
+    });
+  }, [pbpData.rows]);
+
+  const oppPbpRows = useMemo(() => {
+    return (pbpData.rows || []).filter((row) => {
+      const normalized = normalizeTeamIdInput(String(row.team_id || "").trim());
+      return (
+        normalized === normalizeTeamIdInput(normalizedOpponentTeamId) ||
+        normalized === "opponent"
+      );
+    });
+  }, [pbpData.rows, normalizedOpponentTeamId]);
+
+  const ucsbAvailablePlayers = useMemo(() => {
+    const ids = new Set();
+    for (const row of ucsbPbpRows) {
+      const actorId = String(row.athlete_id || "").trim();
+      const assistId = String(row.assist_athlete_id || "").trim();
+      if (actorId) ids.add(actorId);
+      if (assistId) ids.add(assistId);
+    }
+    return Array.from(ids)
+      .map((id) => ({
+        id,
+        name: pbpPlayerNameById[id] || `Player ${id}`,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [ucsbPbpRows, pbpPlayerNameById]);
+
+  const oppAvailablePlayers = useMemo(() => {
+    const ids = new Set();
+    for (const row of oppPbpRows) {
+      const actorId = String(row.athlete_id || "").trim();
+      const assistId = String(row.assist_athlete_id || "").trim();
+      if (actorId) ids.add(actorId);
+      if (assistId) ids.add(assistId);
+    }
+    return Array.from(ids)
+      .map((id) => ({
+        id,
+        name: pbpPlayerNameById[id] || `Player ${id}`,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [oppPbpRows, pbpPlayerNameById]);
+
+  const allPlayersList = useMemo(() => {
+    return [
+      ...ucsbAvailablePlayers.map((player) => ({
+        ...player,
+        team_id: UCSB_TEAM_ID,
+      })),
+      ...oppAvailablePlayers.map((player) => ({
+        ...player,
+        team_id: normalizedOpponentTeamId || "opponent",
+      })),
+    ];
+  }, [ucsbAvailablePlayers, oppAvailablePlayers, normalizedOpponentTeamId]);
+
+  const pbpComparisonChartData = useMemo(() => {
+    if (!pbpComparePlayer1 || !pbpComparePlayer2) return [];
+    const player1Name = pbpPlayerNameById[pbpComparePlayer1] || "Player 1";
+    const player2Name = pbpPlayerNameById[pbpComparePlayer2] || "Player 2";
+
+    let total1 = 0;
+    let total2 = 0;
+
+    const minuteMap = new Map();
+    const seenScoringEvents = new Set();
+    for (const row of pbpData.rows || []) {
+      const incrementsByPlayer = collectPlayerPbpIncrements(row, seenScoringEvents);
+
+      total1 += Number(incrementsByPlayer[pbpComparePlayer1]?.[pbpCompareMetric] || 0);
+      total2 += Number(incrementsByPlayer[pbpComparePlayer2]?.[pbpCompareMetric] || 0);
+      const minute = getElapsedGameMinute(row);
+
+      if (!Number.isFinite(minute)) continue;
+
+      minuteMap.set(minute, {
+        minute,
+        [player1Name]: total1,
+        [player2Name]: total2,
+      });
+    }
+    if (minuteMap.size === 0) return [];
+    const maxMinute = Math.max(...minuteMap.keys());
+    if (!Number.isFinite(maxMinute)) return [];
+    const output = [];
+    let last1 = 0;
+    let last2 = 0;
+
+    for (let minute = 0; minute <= maxMinute; minute += 1) {
+      const row = minuteMap.get(minute);
+      if (row) {
+        last1 = row[player1Name];
+        last2 = row[player2Name];
+      }
+      output.push({
+        minute,
+        minuteLabel: `${minute}`,
+        [player1Name]: last1,
+        [player2Name]: last2,
+      });
+    }
+    return output;
+  }, [
+    pbpData.rows,
+    pbpComparePlayer1,
+    pbpComparePlayer2,
+    pbpCompareMetric,
+    pbpPlayerNameById,
+  ]);
+
+  useEffect(() => {
+    if (!advancedTabsOpen) {
+      return;
+    }
+    const handleMouseDown = (event) => {
+      if (
+        advancedTabsMenuRef.current?.contains(event.target) ||
+        advancedTabsButtonRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+      setAdvancedTabsOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setAdvancedTabsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleMouseDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleMouseDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [advancedTabsOpen]);
+
+  useEffect(() => {
+    if (!isAdvancedView) {
+      setAdvancedTabsOpen(false);
+    }
+  }, [isAdvancedView]);
 
   const loadEspnTeams = useCallback(async () => {
     setTeamsLoading(true);
@@ -918,6 +1612,27 @@ export default function App() {
   useEffect(() => {
     sharedNoteDirtyRef.current = sharedNoteDirty;
   }, [sharedNoteDirty]);
+
+  useEffect(() => {
+    trendsUpdatingRef.current = trendsUpdating;
+  }, [trendsUpdating]);
+
+  useEffect(() => {
+    pbpUpdatingRef.current = pbpUpdating;
+  }, [pbpUpdating]);
+
+  const loadPbpIds = useCallback(async () => {
+    try {
+      const payload = await fetchJson(`${API_BASE}/api/gameids`, {}, 1);
+      setPbpGameOptions(payload.games.map((g) => ({ value: g.id, label: g.label })));
+    } catch (error) {
+      console.error("Error fetching PBP IDs:", error);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPbpIds();
+  }, [loadPbpIds]);
 
   const loadSharedNote = useCallback(async () => {
     try {
@@ -998,7 +1713,6 @@ export default function App() {
       const clientValidationError =
         validatePbpAdvancedFilters(pbpAppliedFilters);
       if (clientValidationError) {
-        // Defensive: applied filters should already be valid via disabled Apply.
         return;
       }
       const filterQuery = buildPbpFilterQuery(pbpAppliedFilters);
@@ -1191,6 +1905,54 @@ export default function App() {
     trendsCurrentTimestamp,
   ]);
 
+  useEffect(() => {
+    if (!basicTrendsAutoUpdate || isAdvancedView) {
+      return;
+    }
+    const intervalSeconds = Number(basicTrendsAutoSeconds);
+    const safeIntervalSeconds =
+      Number.isFinite(intervalSeconds) && intervalSeconds > 0
+        ? intervalSeconds
+        : 10;
+    const tick = () => {
+      if (!trendsUpdatingRef.current) {
+        updateTrends();
+      }
+    };
+    tick();
+    const intervalId = window.setInterval(tick, safeIntervalSeconds * 1000);
+    return () => window.clearInterval(intervalId);
+  }, [
+    basicTrendsAutoUpdate,
+    basicTrendsAutoSeconds,
+    isAdvancedView,
+    updateTrends,
+  ]);
+
+  useEffect(() => {
+    if (!pbpAutoRefreshEnabled || !isAdvancedView) {
+      return;
+    }
+    const intervalSeconds = Number(pbpAutoRefreshSeconds);
+    const safeIntervalSeconds =
+      Number.isFinite(intervalSeconds) && intervalSeconds > 0
+        ? intervalSeconds
+        : 15;
+    const tick = () => {
+      if (!pbpUpdatingRef.current) {
+        updatePbp();
+      }
+    };
+    tick();
+    const intervalId = window.setInterval(tick, safeIntervalSeconds * 1000);
+    return () => window.clearInterval(intervalId);
+  }, [
+    pbpAutoRefreshEnabled,
+    pbpAutoRefreshSeconds,
+    isAdvancedView,
+    updatePbp,
+  ]);
+
   const resolveTeamName = useCallback(
     (teamId) => {
       const normalized = normalizeTeamIdInput(teamId);
@@ -1353,6 +2115,36 @@ export default function App() {
   const negativePlayerTrends = trendsPlayerMessages.filter(
     (message) => message.tone !== "good",
   );
+  const basicTrendSections = [
+    {
+      key: "team-positive",
+      title: "Team Trends · Positive",
+      tone: "good",
+      items: positiveTeamTrends,
+      emptyText: "No positive team trends at the current checkpoint.",
+    },
+    {
+      key: "team-negative",
+      title: "Team Trends · Negative",
+      tone: "bad",
+      items: negativeTeamTrends,
+      emptyText: "No negative team trends at the current checkpoint.",
+    },
+    {
+      key: "player-positive",
+      title: "Individual Trends · Positive",
+      tone: "good",
+      items: positivePlayerTrends,
+      emptyText: "No positive individual trends at the current checkpoint.",
+    },
+    {
+      key: "player-negative",
+      title: "Individual Trends · Negative",
+      tone: "bad",
+      items: negativePlayerTrends,
+      emptyText: "No negative individual trends at the current checkpoint.",
+    },
+  ];
   const pbpClockHint = useMemo(() => {
     if (pbpAdvancedFiltersDraft.clockMode === "last_n" && !pbpCanApply) {
       return "Enter minutes greater than 0 to apply.";
@@ -1377,6 +2169,7 @@ export default function App() {
     }
     return Array.from(opts);
   }, [pbpAdvancedFiltersDraft.teamIds, pbpData.rows]);
+
   const pbpTypeOptions = useMemo(() => {
     const opts = new Set();
     for (const row of pbpData.rows) {
@@ -1662,6 +2455,31 @@ export default function App() {
     </details>
   );
 
+  const advancedTabOptions = [
+    { key: "gameData", label: "Game Data" },
+    { key: "trends", label: "Trends" },
+    { key: "sharedNotes", label: "Shared Notes" },
+    { key: "playerPerformance", label: "Player Performance" },
+  ];
+  const showSeasonData = advancedTabs.seasonData;
+  const showGameData = advancedTabs.gameData;
+  const showTrends = advancedTabs.trends;
+  const showSharedNotes = advancedTabs.sharedNotes;
+  const showPlayerPerformance = advancedTabs.playerPerformance;
+  const hasAdvancedPanels =
+    showSeasonData ||
+    showGameData ||
+    showTrends ||
+    showSharedNotes ||
+    showPlayerPerformance;
+  const showGameHandle = showGameData && showSeasonData;
+  const showTrendsHandle = showTrends && (showSeasonData || showGameData);
+  const showSharedNotesHandle =
+    showSharedNotes && (showSeasonData || showGameData || showTrends);
+  const showPlayerPerformanceHandle =
+    showPlayerPerformance &&
+    (showSeasonData || showGameData || showTrends || showSharedNotes);
+
   const sharedNoteStatus = sharedNoteLoading
     ? "Loading shared notes..."
     : sharedNoteSaving
@@ -1683,7 +2501,9 @@ export default function App() {
           className="shared-note-input"
           value={sharedNoteText}
           onChange={handleSharedNoteChange}
-          placeholder="Type here."
+
+          readOnly={!isAdvancedView}
+          aria-readonly={!isAdvancedView}
         />
       </div>
     </>
@@ -1693,9 +2513,103 @@ export default function App() {
     <div className="app-shell">
       <div className="top-app-bar">
         <div className="top-app-bar-left">
-          <div className="logo-slot" aria-label="Logo placeholder" />
-          <h1>Basketball Live Analytics</h1>
+          <img src={logo} alt="Dashboard Logo" className="logo-slot" />
+          <h1>GSAC Basketball Live Analytics Dashboard</h1>
+          {isAdvancedView ? (
+            <div className="tabs-dropdown">
+              <button
+                type="button"
+                className="neutral tabs-dropdown-toggle"
+                onClick={() => setAdvancedTabsOpen((prev) => !prev)}
+                aria-haspopup="menu"
+                aria-expanded={advancedTabsOpen}
+                ref={advancedTabsButtonRef}
+              >
+                Tabs ▾
+              </button>
+              {advancedTabsOpen ? (
+                <div className="tabs-dropdown-menu" ref={advancedTabsMenuRef}>
+                  {advancedTabOptions.map((option) => (
+                    <label key={option.key} className="tabs-dropdown-item">
+                      <input
+                        type="checkbox"
+                        checked={advancedTabs[option.key]}
+                        onChange={(event) =>
+                          setAdvancedTabs((prev) => ({
+                            ...prev,
+                            [option.key]: event.target.checked,
+                          }))
+                        }
+                      />
+                      <span>{option.label}</span>
+                    </label>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
+        {isAdvancedView ? (
+          <div className="top-app-bar-middle">
+            <div className="top-bar-controls">
+              <div className="top-bar-controls-main">
+                <label>
+                  <span className="label-inline">Game ID:</span>
+                  <select
+                    value={pbpGameId}
+                    onChange={(event) => setPbpGameId(event.target.value)}
+                    disabled={pbpUpdating || trendsUpdating}
+                  >
+                    {pbpGameOptions.length ? (
+                      pbpGameOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))
+                    ) : (
+                      <option value={pbpGameId}>{pbpGameId}</option>
+                    )}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={updatePbp}
+                  disabled={pbpUpdating || trendsUpdating || pbpAutoRefreshEnabled}
+                >
+                  {pbpUpdating ? "Refreshing..." : "Refresh"}
+                </button>
+                <div className="top-bar-auto-refresh">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={pbpAutoRefreshEnabled}
+                      onChange={(event) =>
+                        setPbpAutoRefreshEnabled(event.target.checked)
+                      }
+                    />
+                    <span>Auto Refresh every</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={pbpAutoRefreshSeconds}
+                    onChange={(event) => {
+                      const nextValue = Number(event.target.value);
+                      setPbpAutoRefreshSeconds(
+                        Number.isFinite(nextValue) && nextValue > 0
+                          ? nextValue
+                          : 1,
+                      );
+                    }}
+                    disabled={!pbpAutoRefreshEnabled}
+                  />
+                  <span>seconds</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
         <div className="top-app-bar-right">
           <span>{isAdvancedView ? "Advanced View" : "Basic View"}</span>
           <button
@@ -1708,35 +2622,262 @@ export default function App() {
         </div>
       </div>
       {isAdvancedView ? (
-        <PanelGroup direction="horizontal">
-          <Panel
-            ref={seasonDataPanelRef}
-            defaultSize={25}
-            minSize={22}
-            collapsible
-            collapsedSize={4}
-            onCollapse={() => setSeasonDataCollapsed(true)}
-            onExpand={() => setSeasonDataCollapsed(false)}
-          >
-            <div className="panel data-panel">
-              {seasonDataCollapsed ? (
+        hasAdvancedPanels ? (
+          <PanelGroup direction="horizontal" key="advanced-view">
+            {showGameData ? (
+              <Panel
+                key="game-data"
+                ref={gameDataPanelRef}
+                defaultSize={25}
+                minSize={22}
+                collapsible
+                collapsedSize={4}
+                onCollapse={() => setGameDataCollapsed(true)}
+                onExpand={() => setGameDataCollapsed(false)}
+              >
+            <div className="panel game-panel">
+              {gameDataCollapsed ? (
                 <div
                   className="panel-collapsed"
-                  onClick={() => seasonDataPanelRef.current?.expand()}
+                  onClick={() => gameDataPanelRef.current?.expand()}
                 >
-                  <span>Season Data</span>
+                  <span>Game Data</span>
                 </div>
               ) : (
                 <>
                   <div className="section-header">
-                    <h2>Season Data</h2>
-                    <span>Viewing: {activeSeasonName}</span>
-                    <CollapseButton
-                      panelRef={seasonDataPanelRef}
-                      collapsed={seasonDataCollapsed}
-                      onCollapsedChange={setSeasonDataCollapsed}
-                      title="Season Data"
-                    />
+                    <h2>Game Data</h2>
+                    <div className="game-data-subtabs">
+                      <button
+                        type="button"
+                        className={gameDataSubtab === "live-stats" ? "active" : ""}
+                        onClick={() => setGameDataSubtab("live-stats")}
+                      >
+                        Live Stats
+                      </button>
+                      <button
+                        type="button"
+                        className={gameDataSubtab === "play-by-play" ? "active" : ""}
+                        onClick={() => setGameDataSubtab("play-by-play")}
+                      >
+                        Play by Play
+                      </button>
+                      <button
+                        type="button"
+                        className={gameDataSubtab === "season-data" ? "active" : ""}
+                        onClick={() => setGameDataSubtab("season-data")}
+                      >
+                        Season Data
+                      </button>
+                    </div>
+                    <div className="panel-header-actions">
+                      <CollapseButton
+                        panelRef={gameDataPanelRef}
+                        collapsed={gameDataCollapsed}
+                        onCollapsedChange={setGameDataCollapsed}
+                        title="Game Data"
+                      />
+                    </div>
+                  </div>
+                  {gameDataSubtab === "live-stats" ? (
+                    <>
+                      <div className="tab-tree live-stats-tree">
+                        <div className="branch">
+                          <h3>Team View</h3>
+                          <div className="leaf-list">
+                            <button type="button" className={`leaf ${activeLiveSide === "ucsb" ? "active" : ""}`} onClick={() => setActiveLiveSide("ucsb")}>
+                              UCSB
+                            </button>
+                            <button
+                              type="button"
+                              className={`leaf ${activeLiveSide === "opponent" ? "active" : ""}`}
+                              onClick={() => setActiveLiveSide("opponent")}
+                              disabled={!normalizedOpponentTeamId}
+                            >
+                              Opponent
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="table-status">
+                        {liveStatsLoading ? <span> Loading live stats...</span> : null}
+                        {liveStatsError ? <span className="error"> {liveStatsError}</span> : null}
+                        {!pbpData.rows.length ? (
+                          <span> Live stats are derived from play-by-play data. Click Update above to fetch PBP first.</span>
+                        ) : (
+                          <span> Derived from play-by-play ({pbpData.rows.length} plays).</span>
+                        )}
+                      </div>
+                      <div className="table-status">
+                        <span>
+                          {activeLiveSide === "ucsb" ? "UCSB" : "Opponent"} live player rows: {livePlayerRows}
+                        </span>
+                        <span style={{ marginLeft: "20px", marginRight: "10px" }}>
+                          Highlight Performance:
+                        </span>
+                        <select
+                          value={performanceMetric}
+                          onChange={(e) => setPerformanceMetric(e.target.value)}
+                          style={{ padding: "4px", borderRadius: "4px" }}
+                        >
+                          <option value="PTS">Points (PTS)</option>
+                          <option value="REB">Rebounds (REB)</option>
+                          <option value="AST">Assists (AST)</option>
+                          <option value="PIE">Player Impact(PIE)</option>
+                        </select>
+                      </div>
+                      <DataTable
+                        columns={livePlayersData.columns}
+                        rows={livePlayersData.rows}
+                        state={activeLivePlayersTableState}
+                        onChange={(patch) =>
+                          setLivePlayersTableState((prev) => ({
+                            ...prev,
+                            [activeLiveSide]: {
+                              ...prev[activeLiveSide],
+                              ...patch
+                            }
+                          }))
+                        }
+                        getRowStyle={(row) => {
+                          try {
+                            const playerName = row["Player"];
+                            if (!playerName) return {};
+
+                            if (performanceMetric === "PIE") {
+                              const pieString = row["PIE"] || "0%";
+                              const pieValue = parseFloat(pieString) / 100;
+
+                              if (pieValue >= 0.12) {
+                                return { backgroundColor: "rgba(0, 255, 0, 0.3)" };
+                              } else if (pieValue <= 0.05 && pieValue > 0) {
+                                return { backgroundColor: "rgba(255, 0, 0, 0.2)" };
+                              }
+                              else if (pieValue < 0) {
+                                return { backgroundColor: "rgba(255, 0, 0, 0.2)" };
+                              }
+                              return {};
+                            }
+                            const seasonTeamRows = seasonPlayers[activeLiveSide].rows;
+                            const seasonPlayer = seasonTeamRows.find((p) => {
+                              const seasonName = p["Player"];
+                              if (!seasonName) return false;
+
+                              if (seasonName.includes(",")) {
+                                  const [lastName, firstName] = seasonName.split(",").map(s => s.trim());
+                                  const flippedName = `${firstName} ${lastName}`;
+                                  return flippedName === playerName;
+                              }
+
+                              return seasonName === playerName;
+                            });
+
+                            const statMapping = {
+                              "PTS": "PPG",
+                              "REB": "RPG",
+                              "AST": "APG"
+                            };
+
+                            const seasonStatsKey = statMapping[performanceMetric];
+
+                            if (seasonPlayer && seasonPlayer[seasonStatsKey]) {
+                              const liveValue = parseFloat(row[performanceMetric]) || 0;
+                              const liveMin = parseFloat(row["MIN"]) || 0;
+                              const seasonAvgValue = parseFloat(seasonPlayer[seasonStatsKey]);
+
+                              const seasonTotalMin = parseFloat(seasonPlayer["MIN"]) || 0;
+                              const gpString = seasonPlayer["GP-GS"] || "";
+                              const gp = parseFloat(gpString.split("-")[0]) || 0;
+                              const seasonMpg = gp > 0 ? seasonTotalMin / gp : 0;
+
+                              if (liveMin > 0 && seasonMpg > 0) {
+                                const projectedVal = (liveValue / liveMin) * seasonMpg;
+
+                                let threshold = .25;
+                                if (performanceMetric === "REB") {
+                                  threshold = .35;
+                                } else if (performanceMetric === "AST") {
+                                  threshold = .35;
+                                }
+
+                                const color = getPerformanceColor(
+                                  projectedVal,
+                                  seasonAvgValue,
+                                  threshold,
+                                );
+
+                                if (color) {
+                                  return { backgroundColor: color };
+                                }
+                              }
+                            }
+                          } catch (error) {
+                            console.error("Cant change color", error);
+                          }
+
+                          return {};
+                        }}
+                      />
+                    </>                 
+                  ) : gameDataSubtab === "play-by-play" ? (
+                    <>
+                      <div className="table-status">
+                        {pbpError ? (
+                          <span className="error"> {pbpError}</span>
+                        ) : null}
+                        {!pbpLoading && !pbpError && pbpData.rows.length ? (
+                          <span> Rows: {pbpData.rows.length}</span>
+                        ) : null}
+                        {!pbpLoading && !pbpError && pbpData.source_url ? (
+                          <span>
+                            {" "}
+                            Source:{" "}
+                            <a
+                              href={pbpData.source_url}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              ESPN Core API
+                            </a>
+                          </span>
+                        ) : null}
+                      </div>
+                      <DataTable
+                        columns={pbpData.columns}
+                        rows={pbpData.rows}
+                        state={pbpTableState}
+                        onChange={(patch) =>
+                          setPbpTableState((prev) => ({ ...prev, ...patch }))
+                        }
+                        extraControls={pbpAdvancedControls}
+                      />
+                    </>
+                  ) : gameDataSubtab === "season-data" ? (
+                      <>
+                  <div className="team-line opponent-line">
+                    {espnTeams.length > 0 ? (
+                      <select value={opponentTeamId} onChange={(e) => setOpponentTeamId(e.target.value)}>
+                        <option value="">Select ESPN team</option>
+                        {espnTeams
+                          .filter((team) => {
+                             const id = normalizeTeamIdInput(team.team_id);
+                             return id !== UCSB_TEAM_ID && BIG_WEST_TEAM_IDS.has(id);
+                          })
+                          .map((team) => (
+                            <option key={team.team_id} value={team.team_id}>
+                              {team.school_name} ({team.team_id})
+                            </option>
+                          ))}
+                      </select>
+                    ) : (
+                      <input
+                        type="text"
+                        value={opponentTeamId}
+                        placeholder="Team ID (e.g., ucr)"
+                        onChange={(event) => setOpponentTeamId(event.target.value)}
+                      />
+                    )}
                   </div>
 
                   <div className="tab-tree">
@@ -1792,188 +2933,32 @@ export default function App() {
                       }))
                     }
                   />
-
-
+                </>
+                ) : null}
                 </>
               )}
             </div>
-          </Panel>
+            </Panel>
+          ) : null}
 
-          <PanelResizeHandle className="resize-handle vertical" />
+            {showTrendsHandle ? (
+              <PanelResizeHandle
+                key="handle-game-trends"
+                className="resize-handle vertical"
+              />
+            ) : null}
 
-          <Panel
-            ref={gameDataPanelRef}
-            defaultSize={25}
-            minSize={22}
-            collapsible
-            collapsedSize={4}
-            onCollapse={() => setGameDataCollapsed(true)}
-            onExpand={() => setGameDataCollapsed(false)}
-          >
-            <div className="panel game-panel">
-              {gameDataCollapsed ? (
-                <div
-                  className="panel-collapsed"
-                  onClick={() => gameDataPanelRef.current?.expand()}
-                >
-                  <span>Game Data</span>
-                </div>
-              ) : (
-                <>
-                  <div className="section-header">
-                    <h2>Game Data</h2>
-                    <div className="game-data-subtabs">
-                      <button
-                        type="button"
-                        className={gameDataSubtab === "live-stats" ? "active" : ""}
-                        onClick={() => setGameDataSubtab("live-stats")}
-                      >
-                        Live Stats
-                      </button>
-                      <button
-                        type="button"
-                        className={gameDataSubtab === "play-by-play" ? "active" : ""}
-                        onClick={() => setGameDataSubtab("play-by-play")}
-                      >
-                        Play by Play
-                      </button>
-                    </div>
-                    <div className="panel-header-actions">
-                      <label>
-                        <span className="label-inline">Game ID:</span>
-                        <select
-                          value={pbpGameId}
-                          onChange={(event) => setPbpGameId(event.target.value)}
-                          disabled={pbpUpdating || trendsUpdating}
-                        >
-                          {PBP_GAME_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <CollapseButton
-                        panelRef={gameDataPanelRef}
-                        collapsed={gameDataCollapsed}
-                        onCollapsedChange={setGameDataCollapsed}
-                        title="Game Data"
-                      />
-                    </div>
-                  </div>
-                  {gameDataSubtab === "live-stats" ? (
-                    <>
-                      <div className="table-status">
-                        {liveStatsLoading ? (
-                          <span> Loading live stats...</span>
-                        ) : null}
-                        {liveStatsError ? (
-                          <span className="error"> {liveStatsError}</span>
-                        ) : null}
-                        {!pbpData.rows.length ? (
-                          <span>
-                            {" "}
-                            Live stats are derived from play-by-play data. Click
-                            Update above to fetch PBP first.
-                          </span>
-                        ) : (
-                          <span>
-                            {" "}
-                            Derived from play-by-play ({pbpData.rows.length}{" "}
-                            plays).
-                          </span>
-                        )}
-                      </div>
-                      <div className="tab-tree">
-                        <div className="branch">
-                          <h3>Team View</h3>
-                          <div className="leaf-list">
-                            <button
-                              type="button"
-                              className={`leaf ${activeLiveSide === "ucsb" ? "active" : ""}`}
-                              onClick={() => setActiveLiveSide("ucsb")}
-                            >
-                              UCSB
-                            </button>
-                            <button
-                              type="button"
-                              className={`leaf ${activeLiveSide === "opponent" ? "active" : ""}`}
-                              onClick={() => setActiveLiveSide("opponent")}
-                            >
-                              Opponent
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      <DataTable
-                        columns={livePlayersData.columns}
-                        rows={livePlayersData.rows}
-                        state={activeLivePlayersTableState}
-                        onChange={(patch) =>
-                          setLivePlayersTableState((prev) => ({
-                            ...prev,
-                            [activeLiveSide]: {
-                              ...prev[activeLiveSide],
-                              ...patch,
-                            },
-                          }))
-                        }
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <div className="table-status">
-                        <button type="button" onClick={updatePbp} disabled={pbpUpdating}>
-                          {pbpUpdating ? "Updating..." : "Update Play by Play"}
-                        </button>
-                        {pbpError ? (
-                          <span className="error"> {pbpError}</span>
-                        ) : null}
-                        {!pbpLoading && !pbpError && pbpData.rows.length ? (
-                          <span> Rows: {pbpData.rows.length}</span>
-                        ) : null}
-                        {!pbpLoading && !pbpError && pbpData.source_url ? (
-                          <span>
-                            {" "}
-                            Source:{" "}
-                            <a
-                              href={pbpData.source_url}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              ESPN Core API
-                            </a>
-                          </span>
-                        ) : null}
-                      </div>
-                      <DataTable
-                        columns={pbpData.columns}
-                        rows={pbpData.rows}
-                        state={pbpTableState}
-                        onChange={(patch) =>
-                          setPbpTableState((prev) => ({ ...prev, ...patch }))
-                        }
-                        extraControls={pbpAdvancedControls}
-                      />
-                    </>
-                  )}
-                </>
-              )}
-            </div>
-          </Panel>
-
-          <PanelResizeHandle className="resize-handle vertical" />
-
-          <Panel
-            ref={trendsPanelRef}
-            defaultSize={20}
-            minSize={14}
-            collapsible
-            collapsedSize={4}
-            onCollapse={() => setTrendsCollapsed(true)}
-            onExpand={() => setTrendsCollapsed(false)}
-          >
+            {showTrends ? (
+              <Panel
+                key="trends"
+                ref={trendsPanelRef}
+                defaultSize={20}
+                minSize={14}
+                collapsible
+                collapsedSize={4}
+                onCollapse={() => setTrendsCollapsed(true)}
+                onExpand={() => setTrendsCollapsed(false)}
+              >
             <div className="panel trends-panel">
               {trendsCollapsed ? (
                 <div
@@ -2120,45 +3105,303 @@ export default function App() {
                 </>
               )}
             </div>
-          </Panel>
+            </Panel>
+          ) : null}
 
-          <PanelResizeHandle className="resize-handle vertical" />
+            {showSharedNotesHandle ? (
+              <PanelResizeHandle
+                key="handle-trends-notes"
+                className="resize-handle vertical"
+              />
+            ) : null}
 
-          <Panel
-            ref={insightsColumnRef}
-            defaultSize={20}
-            minSize={16}
-            collapsible
-            collapsedSize={4}
-            onCollapse={() => setInsightsColumnCollapsed(true)}
-            onExpand={() => setInsightsColumnCollapsed(false)}
-          >
-            {insightsColumnCollapsed ? (
-              <div
-                className="panel-collapsed"
-                onClick={() => insightsColumnRef.current?.expand()}
+            {showSharedNotes ? (
+              <Panel
+                key="shared-notes"
+                ref={savedPanelRef}
+                defaultSize={15}
+                minSize={12}
+                collapsible
+                collapsedSize={4}
+                onCollapse={() => setSavedCollapsed(true)}
+                onExpand={() => setSavedCollapsed(false)}
               >
-                <span>Shared Notes</span>
-              </div>
-            ) : (
-              <div className="insights-column">
-                <div className="insights-column-header">
-                  <span>Shared Notes</span>
-                  <CollapseButton
-                    panelRef={insightsColumnRef}
-                    collapsed={insightsColumnCollapsed}
-                    onCollapsedChange={setInsightsColumnCollapsed}
-                    title="Shared Notes"
-                  />
-                </div>
-                {sharedNotePanelBody}
-              </div>
-            )}
-          </Panel>
+                {savedCollapsed ? (
+                  <div
+                    className="panel-collapsed"
+                    onClick={() => savedPanelRef.current?.expand()}
+                  >
+                    <span>Shared Notes</span>
+                  </div>
+                ) : (
+                  <div className="insights-column">
+                    <div className="insights-column-header">
+                      <span>Shared Notes</span>
+                      <CollapseButton
+                        panelRef={savedPanelRef}
+                        collapsed={savedCollapsed}
+                        onCollapsedChange={setSavedCollapsed}
+                        title="Shared Notes"
+                      />
+                    </div>
+                    {sharedNotePanelBody}
+                  </div>
+                )}
+              </Panel>
+            ) : null}
 
-        </PanelGroup>
+            {showPlayerPerformanceHandle ? (
+              <PanelResizeHandle
+                key="handle-notes-performance"
+                className="resize-handle vertical"
+              />
+            ) : null}
+
+            {showPlayerPerformance ? (
+              <Panel
+                key="player-performance"
+                ref={insightsColumnRef}
+                defaultSize={25}
+                minSize={22}
+                collapsible
+                collapsedSize={4}
+                onCollapse={() => setInsightsColumnCollapsed(true)}
+                onExpand={() => setInsightsColumnCollapsed(false)}
+              >
+                {insightsColumnCollapsed ? (
+                  <div
+                    className="panel-collapsed"
+                    onClick={() => insightsColumnRef.current?.expand()}
+                  >
+                    <span>Player Performance</span>
+                  </div>
+                ) : (
+                  <div className="insights-column">
+                    <div className="insights-column-header">
+                      <div
+                        className="tab-switcher"
+                        style={{ display: "flex", gap: "10px" }}
+                      >
+                        <label
+                          htmlFor="insights-view-select"
+                          style={{fontSize: "12px", fontWeight: "bold"}}
+                        >
+                          Data Viz
+                        </label>
+
+                        <select
+                          id="insights-view-select"
+                          className="leaf"
+                          value={insightsView}
+                          onChange={(e) => setInsightsView(e.target.value)}
+                          style={{padding: "8px", width: "100%"}}
+                        >
+                          <option value="timeline">Individual Performance</option>
+                          <option value="pie-overview">Overall Impact</option>
+                          <option value="player-vs-player">Player vs Player</option>
+                          <option value="heat-map">Shot Map</option>
+                        </select>
+                      </div>
+                      <CollapseButton
+                        panelRef={insightsColumnRef}
+                        collapsed={insightsColumnCollapsed}
+                        onCollapsedChange={setInsightsColumnCollapsed}
+                        title="Player Performance"
+                      />
+                    </div>
+
+                    <div
+                      className="panel story-panel"
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        height: "100%",
+                      }}
+                    >
+                      {insightsView === "timeline" ? (
+                        <>
+                          <div
+                            style={{
+                              padding: "15px",
+                              borderBottom: "1px solid #eee",
+                            }}
+                          >
+                            <label
+                              style={{
+                                fontSize: "12px",
+                                fontWeight: "bold",
+                                display: "block",
+                                marginBottom: "5px",
+                              }}
+                            >
+                              SELECT PLAYER
+                            </label>
+                            <select
+                              style={{ width: "100%", padding: "8px" }}
+                              value={selectedStoryPlayerOneId}
+                              onChange={(e) =>
+                                setSelectedStoryPlayerOneId(e.target.value)
+                              }
+                            >
+                              <option value="">Choose a player...</option>
+                              {allPlayersList.map((player) => (
+                                <option key={player.id} value={player.id}>
+                                  {player.name} ({resolveTeamName(player.team_id)})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div style={{ flex: 1, overflowY: "auto" }}>
+                            {(() => {
+                              const selectedPlayer = allPlayersList.find(
+                                (p) => p.id === selectedStoryPlayerOneId,
+                              );
+                              return (
+                                <PlayerPerformanceStory
+                                  playerTimeline={buildCustomPlayerTimeline(
+                                    pbpData.rows,
+                                    selectedStoryPlayerOneId,
+                                    selectedPlayer?.name,
+                                    selectedPlayer?.team_id,
+                                  )}
+                                  teamName={resolveTeamName(
+                                    selectedPlayer?.team_id,
+                                  )}
+                                />
+                              );
+                            })()}
+                          </div>
+                        </>
+                      ) : insightsView === "pie-overview" ?(
+                        <div style={{ flex: 1, overflowY: "auto" }}>
+                          <TeamPieComparison
+                            liveStats={liveStats[`${activeLivePrefix}_players`]}
+                            teamName={
+                              activeLiveSide === "ucsb"
+                                ? ucsbDisplayName
+                                : opponentDisplayName
+                            }
+                          />
+                        </div>
+                      ): insightsView === "player-vs-player" ? (
+                          <>
+                          <div
+                            style={{
+                              padding: "15px",
+                              borderBottom: "1px solid #eee",
+                            }}
+                          >
+                            <label
+                              style={{
+                                fontSize: "12px",
+                                fontWeight: "bold",
+                                display: "block",
+                                marginBottom: "5px",
+                              }}
+                            >
+                              SELECT PLAYER 1
+                            </label>
+                            <select
+                              style={{ width: "100%", padding: "8px" }}
+                              value={selectedStoryPlayerOneId}
+                              onChange={(e) =>
+                                setSelectedStoryPlayerOneId(e.target.value)
+                              }
+                            >
+                              <option value="">Choose a player...</option>
+                              {allPlayersList.map((player) => (
+                                <option key={player.id} value={player.id}>
+                                  {player.name} ({resolveTeamName(player.team_id)})
+                                </option>
+                              ))}
+                            </select>
+
+                            <label
+                              style={{
+                                fontSize: "12px",
+                                fontWeight: "bold",
+                                display: "block",
+                                marginBottom: "5px",
+                              }}
+                            >
+                              SELECT PLAYER 2
+                            </label>
+                            <select
+                              style={{ width: "100%", padding: "8px" }}
+                              value={selectedStoryPlayerTwoId}
+                              onChange={(e) =>
+                                setSelectedStoryPlayerTwoId(e.target.value)
+                              }
+                            >
+                              <option value="">Choose a player...</option>
+                              {allPlayersList.map((player) => (
+                                <option key={player.id} value={player.id}>
+                                  {player.name} ({resolveTeamName(player.team_id)})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div style={{ flex: 1, overflowY: "auto" }}>
+                            {(() => {
+                              const playerOne = allPlayersList.find(
+                                (p) => p.id === selectedStoryPlayerOneId,
+                              );
+                              const playerTwo = allPlayersList.find(
+                                (p) => p.id === selectedStoryPlayerTwoId,
+                              );
+                              const playerOneTimeline= buildCustomPlayerTimeline(
+                                    pbpData.rows,
+                                    selectedStoryPlayerOneId,
+                                    playerOne?.name,
+                                    playerOne?.team_id,
+                                  );
+                              const playerTwoTimeline= buildCustomPlayerTimeline(
+                                    pbpData.rows,
+                                    selectedStoryPlayerTwoId,
+                                    playerTwo?.name,
+                                    playerTwo?.team_id,
+                                  );
+                              const comparisonTimeline= buildWarTimeline(
+                                    playerOneTimeline,
+                                    playerTwoTimeline,
+                                    playerOne?.name,
+                                    playerTwo?.name,
+                                  );
+                              return (
+                                <PlayerPerformanceStory
+                                  playerTimeline={comparisonTimeline}
+                                  teamName="Positive = Player 1, Negative = Player 2"
+                                />
+                              );
+                            })()}
+                          </div>
+                        </>
+                      ): null}
+                    </div>
+                  </div>
+                )}
+              </Panel>
+            ) : null}
+
+          </PanelGroup>
+        ) : (
+          <PanelGroup direction="horizontal" key="advanced-view-empty">
+            <Panel defaultSize={100} minSize={40}>
+              <div className="panel empty-panel">
+                <div className="section-header">
+                  <h2>Advanced View</h2>
+                </div>
+                <p className="placeholder">
+                  Select tabs from the top menu to show panels.
+                </p>
+              </div>
+            </Panel>
+          </PanelGroup>
+        )
       ) : (
-        <PanelGroup direction="horizontal" className="basic-view-shell">
+        <PanelGroup direction="horizontal" className="basic-view-shell" key="basic-view">
           <Panel defaultSize={68} minSize={40}>
             <div className="panel trends-panel">
               <div className="section-header">
@@ -2175,6 +3418,34 @@ export default function App() {
                   <span> No trends snapshot yet.</span>
                 )}
                 {trendsError ? <span className="error"> {trendsError}</span> : null}
+              </div>
+              <div className="table-status trends-auto-update">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={basicTrendsAutoUpdate}
+                    onChange={(event) =>
+                      setBasicTrendsAutoUpdate(event.target.checked)
+                    }
+                  />
+                  Auto update every
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={basicTrendsAutoSeconds}
+                  onChange={(event) => {
+                    const nextValue = Number(event.target.value);
+                    setBasicTrendsAutoSeconds(
+                      Number.isFinite(nextValue) && nextValue > 0
+                        ? nextValue
+                        : 1,
+                    );
+                  }}
+                  disabled={!basicTrendsAutoUpdate}
+                />
+                <span>seconds</span>
               </div>
               <div className="table-status trends-threshold-controls">
                 <label>
@@ -2209,143 +3480,30 @@ export default function App() {
               <div className="table-status">
                 <span>Checkpoint: {trendsCheckpointLabel}</span>
               </div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1fr 1fr",
-                  gap: "8px",
-                  minHeight: 0,
-                  flex: 1,
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    minHeight: 0,
-                    paddingLeft: "14px",
-                  }}
-                >
-                  <div style={{ fontSize: "12px", fontWeight: 600, marginBottom: "6px" }}>
-                    Team Trends
-                  </div>
-                  <div
-                    style={{ display: "flex", flexDirection: "column", gap: "8px", minHeight: 0 }}
-                  >
-                    <div style={{ fontSize: "12px", fontWeight: 600 }}>Positive</div>
-                    <div className="table-scroll">
-                      {positiveTeamTrends.length ? (
-                        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                          {positiveTeamTrends.map((message, index) => (
-                            <li
-                              key={`trend_message_basic_positive_${index}`}
-                              style={{
-                                backgroundColor: "rgba(34, 197, 94, 0.18)",
-                                border: "1px solid rgba(34, 197, 94, 0.5)",
-                                borderRadius: "0",
-                                padding: "8px 10px",
-                                marginBottom: "0",
-                                fontSize: "12px",
-                              }}
-                            >
-                              {message.text}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <span>No positive team trends at the current checkpoint.</span>
-                      )}
+              <div className="table-scroll basic-trends-merged">
+                {basicTrendSections.map((section) => (
+                  <div key={section.key} className="basic-trends-section">
+                    <div className="basic-trends-section-title">
+                      {section.title}
                     </div>
-                    <div style={{ fontSize: "12px", fontWeight: 600 }}>Negative</div>
-                    <div className="table-scroll">
-                      {negativeTeamTrends.length ? (
-                        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                          {negativeTeamTrends.map((message, index) => (
-                            <li
-                              key={`trend_message_basic_negative_${index}`}
-                              style={{
-                                backgroundColor: "rgba(239, 68, 68, 0.18)",
-                                border: "1px solid rgba(239, 68, 68, 0.5)",
-                                borderRadius: "0",
-                                padding: "8px 10px",
-                                marginBottom: "0",
-                                fontSize: "12px",
-                              }}
-                            >
-                              {message.text}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <span>No negative team trends at the current checkpoint.</span>
-                      )}
-                    </div>
+                    {section.items.length ? (
+                      <ul className="basic-trends-list">
+                        {section.items.map((message, index) => (
+                          <li
+                            key={`${section.key}_${index}`}
+                            className={`basic-trends-item ${
+                              section.tone === "good" ? "positive" : "negative"
+                            }`}
+                          >
+                            {message.text}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div className="basic-trends-empty">{section.emptyText}</div>
+                    )}
                   </div>
-                </div>
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    minHeight: 0,
-                    paddingLeft: "14px",
-                  }}
-                >
-                  <div style={{ fontSize: "12px", fontWeight: 600, marginBottom: "6px" }}>
-                    Individual Trends
-                  </div>
-                  <div
-                    style={{ display: "flex", flexDirection: "column", gap: "8px", minHeight: 0 }}
-                  >
-                    <div style={{ fontSize: "12px", fontWeight: 600 }}>Positive</div>
-                    <div className="table-scroll">
-                      {positivePlayerTrends.length ? (
-                        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                          {positivePlayerTrends.map((message, index) => (
-                            <li
-                              key={`trend_player_message_basic_positive_${index}`}
-                              style={{
-                                backgroundColor: "rgba(34, 197, 94, 0.18)",
-                                border: "1px solid rgba(34, 197, 94, 0.5)",
-                                borderRadius: "0",
-                                padding: "8px 10px",
-                                marginBottom: "0",
-                                fontSize: "12px",
-                              }}
-                            >
-                              {message.text}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <span>No positive individual trends at the current checkpoint.</span>
-                      )}
-                    </div>
-                    <div style={{ fontSize: "12px", fontWeight: 600 }}>Negative</div>
-                    <div className="table-scroll">
-                      {negativePlayerTrends.length ? (
-                        <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                          {negativePlayerTrends.map((message, index) => (
-                            <li
-                              key={`trend_player_message_basic_negative_${index}`}
-                              style={{
-                                backgroundColor: "rgba(239, 68, 68, 0.18)",
-                                border: "1px solid rgba(239, 68, 68, 0.5)",
-                                borderRadius: "0",
-                                padding: "8px 10px",
-                                marginBottom: "0",
-                                fontSize: "12px",
-                              }}
-                            >
-                              {message.text}
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <span>No negative individual trends at the current checkpoint.</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
+                ))}
               </div>
             </div>
           </Panel>
@@ -2354,7 +3512,6 @@ export default function App() {
             <div className="panel shared-note-basic-panel">
               <div className="section-header">
                 <h2>Shared Notes</h2>
-                <span>Live server-backed note for every client</span>
               </div>
               {sharedNotePanelBody}
             </div>
