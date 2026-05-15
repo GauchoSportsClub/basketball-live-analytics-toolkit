@@ -2,139 +2,6 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import * as d3 from 'd3';
 import './Heatmap.css';
 
-// ── Embedded shot data ──
-const RAW_CSV = `player,x,y,made,quarter,shot_type,distance_ft
-Gaucho #3,312,85,1,1,2PT,8.0
-Gaucho #3,352,97,0,1,2PT,11.2
-Gaucho #3,289,74,1,1,2PT,6.1
-Gaucho #3,410,210,1,1,3PT,24.3
-Gaucho #3,95,60,0,1,3PT,28.1
-Gaucho #3,455,130,1,1,3PT,26.7
-Gaucho #3,330,88,1,2,2PT,9.4
-Gaucho #3,298,76,0,2,2PT,6.8
-Gaucho #3,278,48,1,2,2PT,2.8
-Gaucho #3,340,175,0,2,2PT,18.4
-Gaucho #3,388,198,1,2,2PT,20.1
-Gaucho #3,420,215,0,2,3PT,24.8
-Gaucho #3,87,55,1,2,3PT,28.6
-Gaucho #3,265,52,1,3,2PT,4.9
-Gaucho #3,180,145,1,3,2PT,15.2
-Gaucho #3,390,95,0,3,2PT,17.3
-Gaucho #3,320,82,1,3,2PT,8.8
-Gaucho #3,55,110,1,3,3PT,26.8
-Gaucho #3,310,190,1,3,2PT,16.1
-Gaucho #3,245,80,1,4,2PT,6.7
-Gaucho #3,420,250,0,4,3PT,25.4
-Gaucho #3,365,102,1,4,2PT,13.2
-Gaucho #3,302,79,0,4,2PT,7.2
-Gaucho #3,450,125,1,4,3PT,26.2
-Gaucho #3,100,68,0,4,3PT,27.5
-Gaucho #3,315,86,1,4,2PT,8.2
-Gaucho #3,345,178,0,4,2PT,18.7
-Gaucho #3,270,55,1,1,2PT,5.2
-Gaucho #3,405,205,0,1,3PT,23.8
-Gaucho #3,93,62,1,2,3PT,28.0
-Gaucho #21,250,48,1,1,2PT,2.1
-Gaucho #21,105,52,0,1,3PT,27.4
-Gaucho #21,388,60,1,1,2PT,18.2
-Gaucho #21,250,165,1,1,2PT,12.1
-Gaucho #21,472,70,0,1,3PT,29.1
-Gaucho #21,260,50,1,2,2PT,2.6
-Gaucho #21,395,58,0,2,2PT,18.8
-Gaucho #21,195,48,1,2,2PT,7.8
-Gaucho #21,300,52,1,2,2PT,6.3
-Gaucho #21,70,140,0,2,3PT,26.3
-Gaucho #21,255,168,0,2,2PT,12.4
-Gaucho #21,478,75,1,2,3PT,29.4
-Gaucho #21,250,185,0,3,2PT,14.3
-Gaucho #21,430,55,1,3,2PT,20.4
-Gaucho #21,155,90,1,3,2PT,16.3
-Gaucho #21,490,95,0,3,3PT,30.2
-Gaucho #21,245,52,1,3,2PT,2.8
-Gaucho #21,270,48,1,4,2PT,3.4
-Gaucho #21,222,140,0,4,2PT,13.1
-Gaucho #21,345,200,1,4,2PT,17.2
-Gaucho #21,108,55,1,4,3PT,27.1
-Gaucho #21,388,62,0,4,2PT,18.0
-Gaucho #21,253,170,1,4,2PT,12.7
-Gaucho #21,468,68,1,4,3PT,28.8
-Gaucho #21,262,48,0,1,2PT,3.0
-Gaucho #21,242,165,1,2,2PT,11.8
-Gaucho #21,480,80,0,3,3PT,29.8
-Gaucho #44,248,38,1,1,2PT,1.2
-Gaucho #44,260,55,1,1,2PT,2.8
-Gaucho #44,235,42,0,1,2PT,1.8
-Gaucho #44,275,70,1,2,2PT,4.8
-Gaucho #44,230,80,0,2,2PT,6.5
-Gaucho #44,255,48,1,2,2PT,2.1
-Gaucho #44,310,100,1,2,2PT,9.8
-Gaucho #44,240,45,1,3,2PT,2.4
-Gaucho #44,265,90,0,3,2PT,7.4
-Gaucho #44,250,110,1,3,2PT,10.2
-Gaucho #44,288,65,1,3,2PT,5.2
-Gaucho #44,245,52,1,4,2PT,2.6
-Gaucho #44,270,42,0,4,2PT,3.2
-Gaucho #44,320,130,1,4,2PT,13.1
-Gaucho #44,252,40,1,1,2PT,1.4
-Gaucho #44,242,58,0,1,2PT,2.2
-Gaucho #44,278,72,1,2,2PT,5.0
-Gaucho #44,258,48,1,2,2PT,2.4
-Gaucho #44,248,82,1,3,2PT,6.8
-Gaucho #44,268,45,0,3,2PT,3.0
-Gaucho #44,295,95,1,4,2PT,8.2
-Gaucho #44,244,42,1,4,2PT,1.9
-Gaucho #5,48,135,1,1,3PT,26.4
-Gaucho #5,452,128,0,1,3PT,26.1
-Gaucho #5,55,90,1,1,3PT,26.9
-Gaucho #5,445,95,1,2,3PT,27.2
-Gaucho #5,50,155,0,2,3PT,25.8
-Gaucho #5,460,110,1,2,3PT,27.8
-Gaucho #5,47,75,0,3,3PT,28.8
-Gaucho #5,453,80,1,3,3PT,28.6
-Gaucho #5,52,140,1,3,3PT,26.2
-Gaucho #5,350,280,0,4,3PT,31.8
-Gaucho #5,150,280,1,4,3PT,31.5
-Gaucho #5,250,300,0,4,3PT,33.1
-Gaucho #5,460,130,1,4,3PT,26.8
-Gaucho #5,48,115,1,4,3PT,27.0
-Gaucho #5,44,130,0,1,3PT,26.6
-Gaucho #5,456,125,1,2,3PT,26.3
-Gaucho #5,50,100,1,3,3PT,27.4
-Gaucho #5,448,105,0,4,3PT,27.6
-Gaucho #11,230,48,0,1,2PT,4.8
-Gaucho #11,270,52,1,1,2PT,4.5
-Gaucho #11,195,140,1,1,2PT,16.2
-Gaucho #11,305,145,0,2,2PT,16.1
-Gaucho #11,165,80,1,2,2PT,18.2
-Gaucho #11,335,78,1,2,2PT,17.9
-Gaucho #11,250,48,1,3,2PT,2.1
-Gaucho #11,210,95,0,3,2PT,12.4
-Gaucho #11,288,98,1,3,2PT,11.2
-Gaucho #11,160,155,0,4,2PT,19.1
-Gaucho #11,340,158,1,4,2PT,18.8
-Gaucho #11,250,175,1,4,2PT,14.2
-Gaucho #11,220,50,1,4,2PT,5.8
-Gaucho #11,280,48,0,4,2PT,6.2
-Gaucho #11,225,52,1,1,2PT,5.2
-Gaucho #11,275,50,0,2,2PT,5.0
-Gaucho #11,200,138,1,3,2PT,15.8
-Gaucho #11,300,142,1,4,2PT,15.6`;
-
-// ── Parse CSV ──
-function parseCSV(text) {
-  const lines = text.trim().split('\n');
-  const headers = lines[0].split(',');
-  return lines.slice(1).map(l => {
-    const vals = l.split(',');
-    return Object.fromEntries(
-      headers.map((h, i) => [h.trim(), isNaN(vals[i]) ? vals[i].trim() : +vals[i]])
-    );
-  });
-}
-
-const allData = parseCSV(RAW_CSV);
-const players = [...new Set(allData.map(d => d.player))];
-
 // ── Color scale ──
 const colorStops = [
   [0,    '#1a3a6b'],
@@ -178,21 +45,46 @@ function kernelDensity(data, bw, W, courtH) {
   return { grid, GW, GH, maxV };
 }
 
-export default function ShotChart() {
+export default function ShotChart({ gameId }) {
   const svgRef = useRef(null);
-  const [player, setPlayer] = useState(players[0]);
-  const [quarter, setQuarter] = useState('all');
+  const [allData, setAllData] = useState([]);
+  const [players, setPlayers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [player, setPlayer] = useState('all');
+  const [period, setPeriod] = useState('all');
   const [shotType, setShotType] = useState('all');
   const [tooltip, setTooltip] = useState({ visible: false, x: 0, y: 0, data: null });
   const [stats, setStats] = useState({ fgpct: '--', makes: '--', attempts: '--', avgDist: '--' });
 
+  // ── Fetch shot data from API ──
+  useEffect(() => {
+    const API_BASE = import.meta.env.VITE_API_BASE_URL || '';
+    const gid = gameId || '401809104';
+    setLoading(true);
+    setError(null);
+    fetch(`${API_BASE}/api/shots?game_id=${encodeURIComponent(gid)}`)
+      .then(r => r.json())
+      .then(data => {
+        if (data.error) throw new Error(data.error);
+        const shots = data.shots || [];
+        setAllData(shots);
+        setPlayers(['all', ...new Set(shots.map(d => d.player))]);
+        setPlayer('all');
+        setPeriod('all');
+        setShotType('all');
+      })
+      .catch(err => setError(err.message))
+      .finally(() => setLoading(false));
+  }, [gameId]);
+
   const getFiltered = useCallback(() => {
     return allData.filter(d =>
-      d.player === player &&
-      (quarter === 'all' || d.quarter === +quarter) &&
+      (player === 'all' || d.player === player) &&
+      (period === 'all' || d.period === +period) &&
       (shotType === 'all' || d.shot_type === shotType)
     );
-  }, [player, quarter, shotType]);
+  }, [allData, player, period, shotType]);
 
   // ── Draw court (runs once) ──
   useEffect(() => {
@@ -348,21 +240,23 @@ export default function ShotChart() {
               className="shot-chart-select"
               value={player}
               onChange={e => setPlayer(e.target.value)}
+              disabled={loading}
             >
-              {players.map(p => <option key={p} value={p}>{p}</option>)}
+              {players.map(p => <option key={p} value={p}>{p === 'all' ? 'All Players' : p}</option>)}
             </select>
           </div>
 
           <div className="ctrl-group">
-            <label>Quarter</label>
+            <label>Half</label>
             <div className="pill-group">
-              {['all', '1', '2', '3', '4'].map(q => (
+              {['all', '1', '2'].map(p => (
                 <button
-                  key={q}
-                  className={`pill${quarter === q ? ' active' : ''}`}
-                  onClick={() => setQuarter(q)}
+                  key={p}
+                  className={`pill${period === p ? ' active' : ''}`}
+                  onClick={() => setPeriod(p)}
+                  disabled={loading}
                 >
-                  {q === 'all' ? 'All' : `Q${q}`}
+                  {p === 'all' ? 'All' : `H${p}`}
                 </button>
               ))}
             </div>
@@ -376,6 +270,7 @@ export default function ShotChart() {
                   key={t}
                   className={`pill${shotType === t ? ' active' : ''}`}
                   onClick={() => setShotType(t)}
+                  disabled={loading}
                 >
                   {t === 'all' ? 'All' : t}
                 </button>
@@ -383,6 +278,10 @@ export default function ShotChart() {
             </div>
           </div>
         </div>
+
+        {/* Status */}
+        {loading && <div className="shot-chart-status">Loading shot data…</div>}
+        {error && <div className="shot-chart-status shot-chart-error">Error: {error}</div>}
 
         {/* Stat cards */}
         <div className="stat-row">
@@ -422,7 +321,7 @@ export default function ShotChart() {
           <div className="tt-title">{tooltip.data.player}</div>
           <div className="tt-row"><span>Result</span><span className="tt-val">{tooltip.data.made ? '✅ Made' : '❌ Missed'}</span></div>
           <div className="tt-row"><span>Distance</span><span className="tt-val">{tooltip.data.distance_ft} ft</span></div>
-          <div className="tt-row"><span>Quarter</span><span className="tt-val">Q{tooltip.data.quarter}</span></div>
+          <div className="tt-row"><span>Half</span><span className="tt-val">H{tooltip.data.period}</span></div>
           <div className="tt-row"><span>Type</span><span className="tt-val">{tooltip.data.shot_type}</span></div>
         </div>
       )}

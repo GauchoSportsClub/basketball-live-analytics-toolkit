@@ -2637,7 +2637,7 @@ export default function App() {
       </div>
       {activePage === "heatmap" ? (
         <div style={{ flex: 1, minHeight: 0, overflow: "auto", display: "flex", flexDirection: "column" }}>
-          <Heatmap />
+          <Heatmap gameId={pbpGameId} />
         </div>
       ) : isAdvancedView ? (
         hasAdvancedPanels ? (

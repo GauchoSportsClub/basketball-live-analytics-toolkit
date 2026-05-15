@@ -2895,6 +2895,58 @@ def generate_insights(prompt: str, dataset_contexts: Sequence[Dict[str, Any]]) -
     raise RuntimeError("Model output failed schema/evidence validation: " + "; ".join(errors))
 
 
+def fetch_shot_chart(game_id: str) -> List[Dict[str, Any]]:
+    """Fetch shooting plays with coordinates from ESPN Summary API."""
+    url = (
+        f"https://site.api.espn.com/apis/site/v2/sports/basketball/"
+        f"mens-college-basketball/summary?event={game_id}"
+    )
+    data = fetch_json(url)
+    plays = data.get("plays", [])
+
+    dist_re = re.compile(r"(\d+)-foot")
+    shots: List[Dict[str, Any]] = []
+
+    for play in plays:
+        if not play.get("shootingPlay"):
+            continue
+        coord = play.get("coordinate")
+        if not coord:
+            continue
+
+        participants = play.get("participants", [])
+        athlete_id = str(participants[0].get("athlete", {}).get("id", "")) if participants else ""
+        player_name = resolve_athlete_name(athlete_id) if athlete_id else "Unknown"
+
+        pts = play.get("pointsAttempted", 2)
+        shot_type = "3PT" if pts == 3 else "2PT"
+        made = bool(play.get("scoringPlay", False))
+        period = play.get("period", {}).get("number", 1)
+
+        text = play.get("text", "")
+        m = dist_re.search(text)
+        distance_ft = float(m.group(1)) if m else round(
+            ((coord["x"] - 25) ** 2 + coord["y"] ** 2) ** 0.5, 1
+        )
+
+        # ESPN coordinates are in feet (x: 0-50, y: 0-47 from baseline).
+        # SVG court is 500×470 px, so scale factor is 10 px/ft.
+        shots.append({
+            "player": player_name,
+            "athlete_id": athlete_id,
+            "team_id": str(play.get("team", {}).get("id", "")),
+            "x": coord["x"] * 10,
+            "y": coord["y"] * 10,
+            "made": made,
+            "period": period,
+            "shot_type": shot_type,
+            "distance_ft": distance_ft,
+            "text": text,
+        })
+
+    return shots
+
+
 class ApiHandler(BaseHTTPRequestHandler):
     server_version = "AnalyticsAPI/0.3"
 
@@ -3125,6 +3177,17 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "updated_at": manifest.get("last_updated", now_iso()),
                     },
                 )
+            except Exception as exc:  # noqa: BLE001
+                self._send_json(500, {"error": str(exc)})
+            return
+
+        if path == "/api/shots":
+            try:
+                query = urlparse(self.path).query
+                params = parse_qs(query, keep_blank_values=True)
+                game_id = (params.get("game_id") or [ESPN_PBP_GAME_ID])[0] or ESPN_PBP_GAME_ID
+                shots = fetch_shot_chart(game_id)
+                self._send_json(200, {"game_id": game_id, "shots": shots})
             except Exception as exc:  # noqa: BLE001
                 self._send_json(500, {"error": str(exc)})
             return
