@@ -1681,7 +1681,7 @@ def _live_team_rows(team_id: str, rows: List[Dict[str, Any]]) -> List[Dict[str, 
     out: List[Dict[str, Any]] = []
 
     def generate_report_string(home_team, away_team, home_score, away_score):
-    margin = home_score - away_score
+        margin = home_score - away_score
     def add_stat(stat_key: str, stat_name: str, value: Any, display_value: Optional[str] = None):
         rk = unique_row_key(f"live_{tid}_overall_{stat_key}", seen)
         out.append({
