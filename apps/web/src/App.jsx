@@ -966,7 +966,7 @@ function getPerformanceColor(liveStats, seasonStatsPer, threshold) {
   return undefined;
 }
 
-function DataTable({ columns, rows, state, onChange, extraControls = null, getRowStyle }) {
+function DataTable({ columns, rows, state, onChange, extraControls = null, getRowStyle, onRowClick }) {
   const rowRefs = useRef({});
 
   const sortedRows = useMemo(() => {
@@ -1089,13 +1089,14 @@ function DataTable({ columns, rows, state, onChange, extraControls = null, getRo
                     }
                   }}
                   className={`${isSelected ? "selected" : ""} ${isHighlighted ? "highlighted" : ""}`.trim()}
-                  style={rowStyle}
-                  onClick={() =>
+                  style={{...rowStyle, cursor: onRowClick ? 'pointer' : 'default'}}
+                  onClick={() => {
                     onChange({
                       selectedRowKey: row.row_key || "",
                       highlightRowKey: row.row_key || state.highlightRowKey,
-                    })
-                  }
+                    });
+                    if (onRowClick) onRowClick(row);
+                  }}
                 >
                   {columns.map((column) => (
                     <td key={`${rowKeyValue}_${column}`}>{row[column]}</td>
@@ -1394,6 +1395,40 @@ export default function App() {
   const [savedInsights, setSavedInsights] = useState([]);
   const [insightLoading, setInsightLoading] = useState(false);
   const [insightError, setInsightError] = useState("");
+
+  // --- NEW: Player Modal State ---
+  const [selectedModalPlayer, setSelectedModalPlayer] = useState(null);
+  const [recentGames, setRecentGames] = useState([]);
+  const [isModalLoading, setIsModalLoading] = useState(false);
+
+  const handlePlayerRowClick = async (row) => {
+    // Only open the modal if we click a row that has a player ID in the key
+    if (!row.row_key || !row.row_key.includes("_player_")) return;
+
+    const athleteId = row.row_key.split('_').pop();
+    if (!athleteId || athleteId === "undefined") return;
+
+    setSelectedModalPlayer(row.Player || "Player");
+    setIsModalLoading(true);
+    setRecentGames([]);
+
+    try {
+      const res = await fetch(`${API_BASE}/api/players/${athleteId}/recent-games`);
+      if (!res.ok) throw new Error("Failed to fetch");
+      const data = await res.json();
+      setRecentGames(data.games || []);
+    } catch (err) {
+      console.error("Failed to fetch recent games:", err);
+    } finally {
+      setIsModalLoading(false);
+    }
+  };
+
+  const closePlayerModal = () => {
+    setSelectedModalPlayer(null);
+    setRecentGames([]);
+  };
+  // -------------------------------
 
   const normalizedOpponentTeamId = useMemo(() => normalizeTeamIdInput(opponentTeamId), [opponentTeamId]);
   const sortedPlayers = useMemo(() => {
@@ -2731,6 +2766,7 @@ export default function App() {
                         columns={livePlayersData.columns}
                         rows={livePlayersData.rows}
                         state={activeLivePlayersTableState}
+                        onRowClick={handlePlayerRowClick}
                         onChange={(patch) =>
                           setLivePlayersTableState((prev) => ({
                             ...prev,
@@ -3518,6 +3554,73 @@ export default function App() {
           </Panel>
         </PanelGroup>
       )}
+
+      {selectedModalPlayer && (
+        <div style={{
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex',
+          alignItems: 'center', justifyContent: 'center', zIndex: 9999
+        }}>
+          <div style={{
+            backgroundColor: 'var(--panel-strong)', padding: '20px', borderRadius: '8px', 
+            width: '500px', maxWidth: '90%', color: 'var(--ink)', boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>{selectedModalPlayer} - Last 5 Games</h3>
+              <button 
+                onClick={closePlayerModal} 
+                style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: 'var(--muted)', fontWeight: 'bold' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {isModalLoading ? (
+              <div style={{ textAlign: 'center', padding: '30px', color: 'var(--muted)' }}>
+                Loading game log...
+              </div>
+            ) : recentGames.length > 0 ? (
+              <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--muted)' }}>
+                    <th style={{ padding: '8px' }}>Date</th>
+                    <th style={{ padding: '8px' }}>Opp</th>
+                    <th style={{ padding: '8px', textAlign: 'center' }}>PTS</th>
+                    <th style={{ padding: '8px', textAlign: 'center' }}>REB</th>
+                    <th style={{ padding: '8px', textAlign: 'center' }}>AST</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentGames.map((game, idx) => {
+                    // Defensive check for date parsing
+                    const formattedDate = game.date 
+                      ? new Date(game.date).toLocaleDateString(undefined, {
+                          month: 'numeric', 
+                          day: 'numeric'
+                        }) 
+                      : "N/A";
+
+                    return (
+                      <tr key={idx} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td style={{ padding: '8px' }}>{formattedDate}</td>
+                        <td style={{ padding: '8px', fontWeight: 600 }}>{game.opponent}</td>
+                        <td style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>{game.pts}</td>
+                        <td style={{ padding: '8px', textAlign: 'center' }}>{game.reb}</td>
+                        <td style={{ padding: '8px', textAlign: 'center' }}>{game.ast}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '30px', color: 'var(--muted)' }}>
+                No recent game logs found from ESPN.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
