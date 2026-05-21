@@ -1262,7 +1262,10 @@ function getElapsedGameMinute(row) {
     }
 
 export default function App() {
-  const [isAdvancedView, setIsAdvancedView] = useState(true);
+  const [activeView, setActiveView] = useState("advanced");
+  const isAdvancedView = activeView === "advanced";
+  const isBasicView = activeView === "basic";
+  const isDataVizView = activeView === "dataViz";
   const [advancedTabsOpen, setAdvancedTabsOpen] = useState(false);
   const [advancedTabs, setAdvancedTabs] = useState({
     seasonData: true,
@@ -2459,7 +2462,6 @@ export default function App() {
     { key: "gameData", label: "Game Data" },
     { key: "trends", label: "Trends" },
     { key: "sharedNotes", label: "Shared Notes" },
-    { key: "playerPerformance", label: "Player Performance" },
   ];
   const showSeasonData = advancedTabs.seasonData;
   const showGameData = advancedTabs.gameData;
@@ -2611,14 +2613,17 @@ export default function App() {
           </div>
         ) : null}
         <div className="top-app-bar-right">
-          <span>{isAdvancedView ? "Advanced View" : "Basic View"}</span>
-          <button
-            type="button"
-            className="neutral"
-            onClick={() => setIsAdvancedView((prev) => !prev)}
-          >
-            {isAdvancedView ? "Switch to Basic View" : "Switch to Advanced View"}
-          </button>
+          <label>
+             <span className="label-inline">View:</span>
+             <select
+                value={activeView}
+                onChange={(event) => setActiveView(event.target.value)}
+             >
+                <option value="advanced">Advanced View</option>
+                <option value="basic">Basic View</option>
+                <option value="dataViz">Data Viz View</option>
+             </select>
+          </label>
         </div>
       </div>
       {isAdvancedView ? (
@@ -3150,240 +3155,7 @@ export default function App() {
               </Panel>
             ) : null}
 
-            {showPlayerPerformanceHandle ? (
-              <PanelResizeHandle
-                key="handle-notes-performance"
-                className="resize-handle vertical"
-              />
-            ) : null}
 
-            {showPlayerPerformance ? (
-              <Panel
-                key="player-performance"
-                ref={insightsColumnRef}
-                defaultSize={25}
-                minSize={22}
-                collapsible
-                collapsedSize={4}
-                onCollapse={() => setInsightsColumnCollapsed(true)}
-                onExpand={() => setInsightsColumnCollapsed(false)}
-              >
-                {insightsColumnCollapsed ? (
-                  <div
-                    className="panel-collapsed"
-                    onClick={() => insightsColumnRef.current?.expand()}
-                  >
-                    <span>Player Performance</span>
-                  </div>
-                ) : (
-                  <div className="insights-column">
-                    <div className="insights-column-header">
-                      <div
-                        className="tab-switcher"
-                        style={{ display: "flex", gap: "10px" }}
-                      >
-                        <label
-                          htmlFor="insights-view-select"
-                          style={{fontSize: "12px", fontWeight: "bold"}}
-                        >
-                          Data Viz
-                        </label>
-
-                        <select
-                          id="insights-view-select"
-                          className="leaf"
-                          value={insightsView}
-                          onChange={(e) => setInsightsView(e.target.value)}
-                          style={{padding: "8px", width: "100%"}}
-                        >
-                          <option value="timeline">Individual Performance</option>
-                          <option value="pie-overview">Overall Impact</option>
-                          <option value="player-vs-player">Player vs Player</option>
-                          <option value="heat-map">Shot Map</option>
-                        </select>
-                      </div>
-                      <CollapseButton
-                        panelRef={insightsColumnRef}
-                        collapsed={insightsColumnCollapsed}
-                        onCollapsedChange={setInsightsColumnCollapsed}
-                        title="Player Performance"
-                      />
-                    </div>
-
-                    <div
-                      className="panel story-panel"
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        height: "100%",
-                      }}
-                    >
-                      {insightsView === "timeline" ? (
-                        <>
-                          <div
-                            style={{
-                              padding: "15px",
-                              borderBottom: "1px solid #eee",
-                            }}
-                          >
-                            <label
-                              style={{
-                                fontSize: "12px",
-                                fontWeight: "bold",
-                                display: "block",
-                                marginBottom: "5px",
-                              }}
-                            >
-                              SELECT PLAYER
-                            </label>
-                            <select
-                              style={{ width: "100%", padding: "8px" }}
-                              value={selectedStoryPlayerOneId}
-                              onChange={(e) =>
-                                setSelectedStoryPlayerOneId(e.target.value)
-                              }
-                            >
-                              <option value="">Choose a player...</option>
-                              {allPlayersList.map((player) => (
-                                <option key={player.id} value={player.id}>
-                                  {player.name} ({resolveTeamName(player.team_id)})
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div style={{ flex: 1, overflowY: "auto" }}>
-                            {(() => {
-                              const selectedPlayer = allPlayersList.find(
-                                (p) => p.id === selectedStoryPlayerOneId,
-                              );
-                              return (
-                                <PlayerPerformanceStory
-                                  playerTimeline={buildCustomPlayerTimeline(
-                                    pbpData.rows,
-                                    selectedStoryPlayerOneId,
-                                    selectedPlayer?.name,
-                                    selectedPlayer?.team_id,
-                                  )}
-                                  teamName={resolveTeamName(
-                                    selectedPlayer?.team_id,
-                                  )}
-                                />
-                              );
-                            })()}
-                          </div>
-                        </>
-                      ) : insightsView === "pie-overview" ?(
-                        <div style={{ flex: 1, overflowY: "auto" }}>
-                          <TeamPieComparison
-                            liveStats={liveStats[`${activeLivePrefix}_players`]}
-                            teamName={
-                              activeLiveSide === "ucsb"
-                                ? ucsbDisplayName
-                                : opponentDisplayName
-                            }
-                          />
-                        </div>
-                      ): insightsView === "player-vs-player" ? (
-                          <>
-                          <div
-                            style={{
-                              padding: "15px",
-                              borderBottom: "1px solid #eee",
-                            }}
-                          >
-                            <label
-                              style={{
-                                fontSize: "12px",
-                                fontWeight: "bold",
-                                display: "block",
-                                marginBottom: "5px",
-                              }}
-                            >
-                              SELECT PLAYER 1
-                            </label>
-                            <select
-                              style={{ width: "100%", padding: "8px" }}
-                              value={selectedStoryPlayerOneId}
-                              onChange={(e) =>
-                                setSelectedStoryPlayerOneId(e.target.value)
-                              }
-                            >
-                              <option value="">Choose a player...</option>
-                              {allPlayersList.map((player) => (
-                                <option key={player.id} value={player.id}>
-                                  {player.name} ({resolveTeamName(player.team_id)})
-                                </option>
-                              ))}
-                            </select>
-
-                            <label
-                              style={{
-                                fontSize: "12px",
-                                fontWeight: "bold",
-                                display: "block",
-                                marginBottom: "5px",
-                              }}
-                            >
-                              SELECT PLAYER 2
-                            </label>
-                            <select
-                              style={{ width: "100%", padding: "8px" }}
-                              value={selectedStoryPlayerTwoId}
-                              onChange={(e) =>
-                                setSelectedStoryPlayerTwoId(e.target.value)
-                              }
-                            >
-                              <option value="">Choose a player...</option>
-                              {allPlayersList.map((player) => (
-                                <option key={player.id} value={player.id}>
-                                  {player.name} ({resolveTeamName(player.team_id)})
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div style={{ flex: 1, overflowY: "auto" }}>
-                            {(() => {
-                              const playerOne = allPlayersList.find(
-                                (p) => p.id === selectedStoryPlayerOneId,
-                              );
-                              const playerTwo = allPlayersList.find(
-                                (p) => p.id === selectedStoryPlayerTwoId,
-                              );
-                              const playerOneTimeline= buildCustomPlayerTimeline(
-                                    pbpData.rows,
-                                    selectedStoryPlayerOneId,
-                                    playerOne?.name,
-                                    playerOne?.team_id,
-                                  );
-                              const playerTwoTimeline= buildCustomPlayerTimeline(
-                                    pbpData.rows,
-                                    selectedStoryPlayerTwoId,
-                                    playerTwo?.name,
-                                    playerTwo?.team_id,
-                                  );
-                              const comparisonTimeline= buildWarTimeline(
-                                    playerOneTimeline,
-                                    playerTwoTimeline,
-                                    playerOne?.name,
-                                    playerTwo?.name,
-                                  );
-                              return (
-                                <PlayerPerformanceStory
-                                  playerTimeline={comparisonTimeline}
-                                  teamName="Positive = Player 1, Negative = Player 2"
-                                />
-                              );
-                            })()}
-                          </div>
-                        </>
-                      ): null}
-                    </div>
-                  </div>
-                )}
-              </Panel>
-            ) : null}
 
           </PanelGroup>
         ) : (
@@ -3400,7 +3172,7 @@ export default function App() {
             </Panel>
           </PanelGroup>
         )
-      ) : (
+      ) : isBasicView ? (
         <PanelGroup direction="horizontal" className="basic-view-shell" key="basic-view">
           <Panel defaultSize={68} minSize={40}>
             <div className="panel trends-panel">
@@ -3517,7 +3289,191 @@ export default function App() {
             </div>
           </Panel>
         </PanelGroup>
-      )}
+      ) : isDataVizView ? (
+        <PanelGroup direction="horizontal" className="data-viz-view-shell" key="data-viz-view">
+          <Panel defaultSize={68} minSize={40}>
+             <div className="panel player-performance-panel">
+                <div className="section-header">
+                    <h2>Player Performance</h2>
+                </div>
+
+                <div
+                      className="panel story-panel"
+                      style={{
+                        display: "flex",
+                        flexDirection: "column",
+                        height: "100%",
+                      }}
+                    >
+
+                          <div
+                            style={{
+                              padding: "15px",
+                              borderBottom: "1px solid #eee",
+                            }}
+                          >
+                            <label
+                              style={{
+                                fontSize: "12px",
+                                fontWeight: "bold",
+                                display: "block",
+                                marginBottom: "5px",
+                              }}
+                            >
+                              SELECT PLAYER
+                            </label>
+                            <select
+                              style={{ width: "100%", padding: "8px" }}
+                              value={selectedStoryPlayerOneId}
+                              onChange={(e) =>
+                                setSelectedStoryPlayerOneId(e.target.value)
+                              }
+                            >
+                              <option value="">Choose a player...</option>
+                              {allPlayersList.map((player) => (
+                                <option key={player.id} value={player.id}>
+                                  {player.name} ({resolveTeamName(player.team_id)})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div style={{ flex: 1, overflowY: "auto" }}>
+                            {(() => {
+                              const selectedPlayer = allPlayersList.find(
+                                (p) => p.id === selectedStoryPlayerOneId,
+                              );
+                              return (
+                                <PlayerPerformanceStory
+                                  playerTimeline={buildCustomPlayerTimeline(
+                                    pbpData.rows,
+                                    selectedStoryPlayerOneId,
+                                    selectedPlayer?.name,
+                                    selectedPlayer?.team_id,
+                                  )}
+                                  teamName={resolveTeamName(
+                                    selectedPlayer?.team_id,
+                                  )}
+                                />
+                              );
+                            })()};
+                          </div>
+                    </div>
+                </div>
+          </Panel>
+          <Panel defaultSize={68} minSize={40}>
+            <div style={{ flex: 1, overflowY: "auto" }}>
+                          <TeamPieComparison
+                            liveStats={liveStats[`${activeLivePrefix}_players`]}
+                            teamName={
+                              activeLiveSide === "ucsb"
+                                ? ucsbDisplayName
+                                : opponentDisplayName
+                            }
+                          />
+                        </div>
+          </Panel>
+          <Panel defaultSize={68} minSize={40}>
+             <div className="panel player-war-panel">
+                 <div className="section-header">
+                     <h2>Player Wars </h2>
+                 </div>
+                          <div
+                            style={{
+                              padding: "15px",
+                              borderBottom: "1px solid #eee",
+                            }}
+                          >
+                            <label
+                              style={{
+                                fontSize: "12px",
+                                fontWeight: "bold",
+                                display: "block",
+                                marginBottom: "5px",
+                              }}
+                            >
+                              SELECT UCSB PLAYER
+                            </label>
+                            <select
+                              style={{ width: "100%", padding: "8px" }}
+                              value={selectedStoryPlayerOneId}
+                              onChange={(e) =>
+                                setSelectedStoryPlayerOneId(e.target.value)
+                              }
+                            >
+                              <option value="">Choose a player...</option>
+                              {allPlayersList.map((player) => (
+                                <option key={player.id} value={player.id}>
+                                  {player.name} ({resolveTeamName(player.team_id)})
+                                </option>
+                              ))}
+                            </select>
+
+                            <label
+                              style={{
+                                fontSize: "12px",
+                                fontWeight: "bold",
+                                display: "block",
+                                marginBottom: "5px",
+                              }}
+                            >
+                              SELECT OPPONENT PLAYER
+                            </label>
+                            <select
+                              style={{ width: "100%", padding: "8px" }}
+                              value={selectedStoryPlayerTwoId}
+                              onChange={(e) =>
+                                setSelectedStoryPlayerTwoId(e.target.value)
+                              }
+                            >
+                              <option value="">Choose a player...</option>
+                              {allPlayersList.map((player) => (
+                                <option key={player.id} value={player.id}>
+                                  {player.name} ({resolveTeamName(player.team_id)})
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+
+                          <div style={{ flex: 1, overflowY: "auto" }}>
+                            {(() => {
+                              const playerOne = allPlayersList.find(
+                                (p) => p.id === selectedStoryPlayerOneId,
+                              );
+                              const playerTwo = allPlayersList.find(
+                                (p) => p.id === selectedStoryPlayerTwoId,
+                              );
+                              const playerOneTimeline= buildCustomPlayerTimeline(
+                                    pbpData.rows,
+                                    selectedStoryPlayerOneId,
+                                    playerOne?.name,
+                                    playerOne?.team_id,
+                                  );
+                              const playerTwoTimeline= buildCustomPlayerTimeline(
+                                    pbpData.rows,
+                                    selectedStoryPlayerTwoId,
+                                    playerTwo?.name,
+                                    playerTwo?.team_id,
+                                  );
+                              const comparisonTimeline= buildWarTimeline(
+                                    playerOneTimeline,
+                                    playerTwoTimeline,
+                                    playerOne?.name,
+                                    playerTwo?.name,
+                                  );
+                              return (
+                                <PlayerPerformanceStory
+                                  playerTimeline={comparisonTimeline}
+                                  teamName="Positive = UCSB, Negative = Opponent"
+                                />
+                              );
+                            })()}
+                          </div>
+                        </div>
+          </Panel>
+        </PanelGroup>
+
+      ) : null}
     </div>
   );
 }
