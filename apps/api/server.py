@@ -16,7 +16,7 @@ from threading import Lock
 from typing import Any, Dict, List, Optional, Sequence, Set, Tuple
 from urllib.parse import parse_qs, urlparse
 
-import requests
+import requests 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DATA_ROOT = REPO_ROOT / "data"
@@ -1522,6 +1522,70 @@ def fetch_live_minutes(game_id: str) -> Dict[str, str]:
         
     return minutes_map
 
+def fetch_athlete_recent_games(athlete_id: str, limit: int = 5) -> List[Dict[str, Any]]:
+    """Fetch the recent game logs for a specific athlete from ESPN."""
+    season_year = season_year_from_label(SEASON_LABEL)
+    url = f"https://site.web.api.espn.com/apis/common/v3/sports/basketball/mens-college-basketball/athletes/{athlete_id}/gamelog?region=us&lang=en&season={season_year}"
+    
+    try:
+        payload = fetch_json(url)
+        root_events = payload.get("events", {})
+        season_types = payload.get("seasonTypes", [])
+        
+        
+        pts_idx = 13
+        reb_idx = 11
+        ast_idx = 12
+        
+        games = []
+        
+        for season_type in season_types:
+            categories = season_type.get("categories", [])
+            for cat in categories:
+                events = cat.get("events", [])
+                
+                for event in events:
+                    event_id = event.get("eventId")
+                    if not event_id:
+                        continue
+                    
+                    meta = root_events.get(str(event_id), {})
+                    game_date = meta.get("gameDate") or meta.get("eventDate") or ""
+                    
+                    if not game_date:
+                        continue
+                    
+                    game_result = meta.get("gameResult", "").strip()
+                    if not game_result:
+                        continue
+                    
+                    stats = event.get("stats", [])
+                    
+                    pts_val = stats[pts_idx] if pts_idx >= 0 and len(stats) > pts_idx else "0"
+                    reb_val = stats[reb_idx] if reb_idx >= 0 and len(stats) > reb_idx else "0"
+                    ast_val = stats[ast_idx] if ast_idx >= 0 and len(stats) > ast_idx else "0"
+                    
+                    opp_obj = meta.get("opponent", {})
+                    opp_name = opp_obj.get("displayName", "Unknown") if isinstance(opp_obj, dict) else str(opp_obj)
+                    
+                    games.append({
+                        "game_id": event_id,
+                        "date": game_date,
+                        "opponent": opp_name,
+                        "result": meta.get("gameResult", ""),
+                        "pts": str(pts_val).strip(),
+                        "reb": str(reb_val).strip(),
+                        "ast": str(ast_val).strip(),
+                    })
+        
+        games.sort(key=lambda x: x["date"], reverse=True)
+        return games[:limit]
+        
+    except Exception as exc:
+        print(f"Warning: Failed to fetch game log for athlete {athlete_id}: {exc}")
+        import traceback
+        traceback.print_exc()
+        return []
 
 def _compute_live_player_stats(team_plays: List[Dict[str, Any]]) -> Dict[str, Dict[str, int]]:
     stats_by_athlete: Dict[str, Dict[str, int]] = {}
@@ -3080,6 +3144,26 @@ class ApiHandler(BaseHTTPRequestHandler):
                     cols = live[key].get("columns", [])
                     live[key]["columns"] = [c for c in cols if c not in hidden]
                 self._send_json(200, live)
+            except Exception as exc:  # noqa: BLE001
+                self._send_json(500, {"error": str(exc)})
+            return
+
+        match = re.match(r"^/api/players/([a-zA-Z0-9-]+)/recent-games$", path)
+        if match:
+            try:
+                athlete_id = match.group(1)
+                
+            
+                query = urlparse(self.path).query
+                params = parse_qs(query, keep_blank_values=True)
+                limit_param = (params.get("limit") or ["5"])[0]
+                limit = int(limit_param) if limit_param.isdigit() else 5
+                
+                games = fetch_athlete_recent_games(athlete_id, limit=limit)
+                self._send_json(200, {
+                    "athlete_id": athlete_id,
+                    "games": games
+                })
             except Exception as exc:  # noqa: BLE001
                 self._send_json(500, {"error": str(exc)})
             return
