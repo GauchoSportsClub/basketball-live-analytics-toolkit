@@ -1352,7 +1352,11 @@ def _build_pbp_display_rows(
 def load_pbp_rows(game_id: Optional[str] = None) -> List[Dict[str, Any]]:
     path = pbp_data_path(game_id=game_id)
     if not path.exists():
-        raise RuntimeError("PBP data not found. Click Update in the PBP panel to fetch ESPN data.")
+        gid = (game_id or ESPN_PBP_GAME_ID).strip()
+        rows = fetch_espn_pbp_rows(league=ESPN_PBP_LEAGUE, game_id=gid)
+        if not rows:
+            raise RuntimeError("No play-by-play rows returned from ESPN.")
+        write_json_file(path, rows)
 
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, list):
@@ -2895,6 +2899,58 @@ def generate_insights(prompt: str, dataset_contexts: Sequence[Dict[str, Any]]) -
     raise RuntimeError("Model output failed schema/evidence validation: " + "; ".join(errors))
 
 
+def fetch_shot_chart(game_id: str) -> List[Dict[str, Any]]:
+    """Fetch shooting plays with coordinates from ESPN Summary API."""
+    url = (
+        f"https://site.api.espn.com/apis/site/v2/sports/basketball/"
+        f"mens-college-basketball/summary?event={game_id}"
+    )
+    data = fetch_json(url)
+    plays = data.get("plays", [])
+
+    dist_re = re.compile(r"(\d+)-foot")
+    shots: List[Dict[str, Any]] = []
+
+    for play in plays:
+        if not play.get("shootingPlay"):
+            continue
+        coord = play.get("coordinate")
+        if not coord:
+            continue
+
+        participants = play.get("participants", [])
+        athlete_id = str(participants[0].get("athlete", {}).get("id", "")) if participants else ""
+        player_name = resolve_athlete_name(athlete_id) if athlete_id else "Unknown"
+
+        pts = play.get("pointsAttempted", 2)
+        shot_type = "3PT" if pts == 3 else "2PT"
+        made = bool(play.get("scoringPlay", False))
+        period = play.get("period", {}).get("number", 1)
+
+        text = play.get("text", "")
+        m = dist_re.search(text)
+        distance_ft = float(m.group(1)) if m else round(
+            ((coord["x"] - 25) ** 2 + coord["y"] ** 2) ** 0.5, 1
+        )
+
+        # ESPN coordinates: x 0-50, y 0-47 from baseline.
+        # SVG court is 500x470 px, scale factor 10 px/ft.
+        shots.append({
+            "player": player_name,
+            "athlete_id": athlete_id,
+            "team_id": str(play.get("team", {}).get("id", "")),
+            "x": coord["x"] * 10,
+            "y": coord["y"] * 10,
+            "made": made,
+            "period": period,
+            "shot_type": shot_type,
+            "distance_ft": distance_ft,
+            "text": text,
+        })
+
+    return shots
+
+
 class ApiHandler(BaseHTTPRequestHandler):
     server_version = "AnalyticsAPI/0.3"
 
@@ -3011,23 +3067,39 @@ class ApiHandler(BaseHTTPRequestHandler):
         if path == '/api/gameids':
             try:
                 events_list = fetch_json(f'http://sports.core.api.espn.com/v2/sports/basketball/leagues/mens-college-basketball/seasons/2026/teams/{DEFAULT_UCSB_TEAM_ID}/events?limit=50&lang=en&region=us')
-                
+
+                def _opponent_team_id(event_data: Dict[str, Any]) -> str:
+                    """Extract the non-UCSB competitor team ID from an ESPN event payload."""
+                    competitors = event_data.get('competitors', [])
+                    if not competitors:
+                        comps = event_data.get('competitions', [])
+                        if comps and isinstance(comps, list):
+                            competitors = comps[0].get('competitors', []) if comps[0] else []
+                    for comp in (competitors if isinstance(competitors, list) else []):
+                        team = comp.get('team', {})
+                        ref = (team.get('$ref') or '') if isinstance(team, dict) else ''
+                        m = re.search(r'/teams/(\d+)', ref)
+                        if m and m.group(1) != DEFAULT_UCSB_TEAM_ID:
+                            return m.group(1)
+                    return ''
+
                 games_with_labels = []
                 for item in events_list.get('items', [])[-15:]:
                     ref_url = item.get('$ref')
                     if not ref_url:
                         continue
-                    
+
                     game_id_match = re.search(r'/events/(40\d+)', ref_url)
                     if game_id_match:
                         game_id = game_id_match.group(1)
                         try:
                             event_data = fetch_json(ref_url)
                             label = event_data.get('shortName', game_id)
-                            games_with_labels.append({"id": game_id, "label": label})
+                            opp_id = _opponent_team_id(event_data)
+                            games_with_labels.append({"id": game_id, "label": label, "opponent_team_id": opp_id})
                         except:
-                            games_with_labels.append({"id": game_id, "label": game_id})
-                
+                            games_with_labels.append({"id": game_id, "label": game_id, "opponent_team_id": ''})
+
                 # Sort most recent to top
                 games_with_labels.reverse()
                 self._send_json(200, {"games": games_with_labels})
@@ -3125,6 +3197,17 @@ class ApiHandler(BaseHTTPRequestHandler):
                         "updated_at": manifest.get("last_updated", now_iso()),
                     },
                 )
+            except Exception as exc:  # noqa: BLE001
+                self._send_json(500, {"error": str(exc)})
+            return
+
+        if path == "/api/shots":
+            try:
+                query = urlparse(self.path).query
+                params = parse_qs(query, keep_blank_values=True)
+                game_id = (params.get("game_id") or [ESPN_PBP_GAME_ID])[0] or ESPN_PBP_GAME_ID
+                shots = fetch_shot_chart(game_id)
+                self._send_json(200, {"game_id": game_id, "shots": shots})
             except Exception as exc:  # noqa: BLE001
                 self._send_json(500, {"error": str(exc)})
             return

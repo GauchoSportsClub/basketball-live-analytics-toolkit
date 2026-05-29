@@ -1,0 +1,238 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --navy:    #003660;
+    --gold:    #FFD200;
+    --gold-dim:#c9a200;
+    --bg:      #080e1a;
+    --surface: #0f1c2e;
+    --surface2:#162338;
+    --border:  rgba(255,210,0,0.12);
+    --text:    #e8edf5;
+    --muted:   #7a8fa8;
+    --make:    #4ade80;
+    --miss:    #f87171;
+    --font-display: 'Barlow Condensed', sans-serif;
+    --font-body:    'Barlow', sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-body);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* ── Header ── */
+  header {
+    width: 100%;
+    background: linear-gradient(135deg, #001f40 0%, var(--navy) 60%, #002a4d 100%);
+    border-bottom: 2px solid var(--gold);
+    padding: 18px 32px;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    box-shadow: 0 4px 32px rgba(0,0,0,0.5);
+  }
+
+  .badge {
+    width: 48px; height: 48px;
+    background: var(--gold);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-display);
+    font-weight: 800; font-size: 13px;
+    color: var(--navy);
+    letter-spacing: 0.04em;
+    flex-shrink: 0;
+    box-shadow: 0 0 0 3px var(--navy), 0 0 0 5px var(--gold);
+  }
+
+  header h1 {
+    font-family: var(--font-display);
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #fff;
+    line-height: 1;
+  }
+  header h1 span { color: var(--gold); }
+  header p { font-size: 12px; color: rgba(255,255,255,0.5); margin-top: 3px; letter-spacing: 0.08em; text-transform: uppercase; }
+
+  /* ── Main layout ── */
+  main {
+    width: 100%;
+    max-width: 1100px;
+    padding: 28px 24px 48px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+  }
+
+  /* ── Controls bar ── */
+  .controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-end;
+  }
+
+  .ctrl-group {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .ctrl-group label {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+  }
+
+  select, .pill-group {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--font-body);
+    font-size: 13px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.2s;
+  }
+  select:hover, select:focus { border-color: var(--gold); }
+  select option { background: #0f1c2e; }
+
+  .pill-group {
+    display: flex;
+    gap: 0;
+    padding: 0;
+    overflow: hidden;
+  }
+  .pill {
+    padding: 8px 14px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    border: none;
+    background: var(--surface);
+    color: var(--muted);
+    transition: all 0.18s;
+    font-family: var(--font-body);
+  }
+  .pill:not(:last-child) { border-right: 1px solid var(--border); }
+  .pill.active {
+    background: var(--gold);
+    color: var(--navy);
+  }
+  .pill:hover:not(.active) { background: var(--surface2); color: var(--text); }
+
+  /* ── Stat cards ── */
+  .stat-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+  }
+  @media (max-width: 600px) { .stat-row { grid-template-columns: repeat(2, 1fr); } }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    position: relative;
+    overflow: hidden;
+  }
+  .stat-card::before {
+    content:'';
+    position:absolute; top:0; left:0; right:0; height:2px;
+    background: var(--gold);
+    opacity: 0.6;
+  }
+  .stat-card .val {
+    font-family: var(--font-display);
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--gold);
+    line-height: 1;
+  }
+  .stat-card .lbl {
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-top: 4px;
+  }
+
+  /* ── Chart card ── */
+  .chart-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+  }
+  .chart-card::after {
+    content:'';
+    position:absolute; inset:0;
+    background: radial-gradient(ellipse at 50% 0%, rgba(255,210,0,0.04) 0%, transparent 70%);
+    pointer-events:none;
+  }
+
+  #court-svg {
+    width: 100%;
+    height: auto;
+    display: block;
+  }
+
+  /* ── Legend ── */
+  .legend {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-top: 12px;
+  }
+  .leg-item { display: flex; align-items: center; gap: 7px; font-size: 12px; color: var(--muted); }
+  .leg-dot { width:10px; height:10px; border-radius:50%; }
+  .leg-grad {
+    width: 100px; height: 8px; border-radius: 4px;
+    background: linear-gradient(to right, #1a3a6b, #3b82f6, #ffffff, #f97316, #dc2626);
+  }
+
+  /* ── Tooltip ── */
+  #tooltip {
+    position: fixed;
+    background: rgba(8,14,26,0.95);
+    border: 1px solid var(--gold);
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 12px;
+    color: var(--text);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 100;
+    backdrop-filter: blur(8px);
+    min-width: 120px;
+  }
+  #tooltip.visible { opacity: 1; }
+  #tooltip .tt-title { font-weight: 700; color: var(--gold); margin-bottom: 4px; font-size: 13px; }
+  #tooltip .tt-row { display: flex; justify-content: space-between; gap: 16px; }
+
+  .shot-chart-status {
+    text-align: center;
+    padding: 8px 16px;
+    font-size: 13px;
+    color: var(--muted);
+  }
+  .shot-chart-error { color: var(--miss); }
+  #tooltip .tt-val { font-weight: 600; color: #fff; }
