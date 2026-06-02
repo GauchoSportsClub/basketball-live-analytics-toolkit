@@ -35,7 +35,23 @@ function CollapseButton({ panelRef, collapsed, onCollapsedChange, title }) {
   );
 }
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "";
+function getApiBase() {
+  if (import.meta.env.VITE_API_BASE_URL) {
+    return import.meta.env.VITE_API_BASE_URL;
+  }
+  if (
+    typeof window !== "undefined" &&
+    window.location.hostname === "localhost" &&
+    window.location.port !== "8000"
+  ) {
+    return "http://localhost:8000";
+  }
+  return "";
+}
+
+const API_BASE = getApiBase();
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
+const PROFILE_STORAGE_KEY = "basketball-live-analytics-profile";
 
 const UCSB_TEAM_ID = "2540";
 const PBP_TEAM_ID = "pbp";
@@ -84,6 +100,44 @@ const BIG_WEST_TEAM_IDS = new Set([
   "62",   // Hawaii
   "ucsb", "uci", "ucr", "ucsd", "ucd", "calpoly", "csub", "csuf", "csun", "lbsu", "hawaii"
 ]);
+
+function decodeJwtPayload(token) {
+  const payload = token.split(".")[1];
+  if (!payload) {
+    throw new Error("Missing Google credential payload");
+  }
+  const normalizedPayload = payload
+    .replace(/-/g, "+")
+    .replace(/_/g, "/")
+    .padEnd(Math.ceil(payload.length / 4) * 4, "=");
+  const decodedPayload = atob(normalizedPayload);
+  const jsonPayload = decodedPayload
+    .split("")
+    .map((char) => `%${char.charCodeAt(0).toString(16).padStart(2, "0")}`)
+    .join("");
+  return JSON.parse(decodeURIComponent(jsonPayload));
+}
+
+function getStoredProfile() {
+  try {
+    const storedProfile = localStorage.getItem(PROFILE_STORAGE_KEY);
+    return storedProfile ? JSON.parse(storedProfile) : null;
+  } catch {
+    return null;
+  }
+}
+
+function setStoredProfile(profile) {
+  try {
+    if (profile) {
+      localStorage.setItem(PROFILE_STORAGE_KEY, JSON.stringify(profile));
+    } else {
+      localStorage.removeItem(PROFILE_STORAGE_KEY);
+    }
+  } catch {
+    // Local storage is optional for the UI; ignore private browsing failures.
+  }
+}
 
 const DEFAULT_TABLE_STATE = {
   filter: "",
@@ -1388,6 +1442,11 @@ export default function App() {
   const isBasicView = activeView === "basic";
   const isDataVizView = activeView === "dataViz";
   const [advancedTabsOpen, setAdvancedTabsOpen] = useState(false);
+  const [topBarAutoRefreshOpen, setTopBarAutoRefreshOpen] = useState(false);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [profileUser, setProfileUser] = useState(() => getStoredProfile());
+  const [googleAuthReady, setGoogleAuthReady] = useState(false);
+  const [googleAuthError, setGoogleAuthError] = useState("");
   const [advancedTabs, setAdvancedTabs] = useState({
     seasonData: true,
     gameData: true,
@@ -1409,15 +1468,19 @@ export default function App() {
 
   const advancedTabsButtonRef = useRef(null);
   const advancedTabsMenuRef = useRef(null);
+  const topBarAutoRefreshButtonRef = useRef(null);
+  const topBarAutoRefreshMenuRef = useRef(null);
+  const profileMenuButtonRef = useRef(null);
+  const profileMenuRef = useRef(null);
+  const googleSignInButtonRef = useRef(null);
+  const googleAuthInitializedRef = useRef(false);
+  const sharedMessagesListRef = useRef(null);
   const seasonDataPanelRef = useRef();
   const gameDataPanelRef = useRef();
   const trendsPanelRef = useRef();
   const promptPanelRef = useRef();
   const savedPanelRef = useRef();
   const insightsColumnRef = useRef();
-  const sharedNoteSaveTimeoutRef = useRef(null);
-  const sharedNoteTextRef = useRef("");
-  const sharedNoteDirtyRef = useRef(false);
   const trendsUpdatingRef = useRef(false);
   const pbpUpdatingRef = useRef(false);
 
@@ -1498,11 +1561,12 @@ export default function App() {
     useState("1st Half 10:00");
   const [basicTrendsAutoUpdate, setBasicTrendsAutoUpdate] = useState(false);
   const [basicTrendsAutoSeconds, setBasicTrendsAutoSeconds] = useState(10);
-  const [sharedNoteText, setSharedNoteText] = useState("");
+  const [sharedMessages, setSharedMessages] = useState([]);
+  const [sharedMessageDraft, setSharedMessageDraft] = useState("");
+  const [sharedMessageShowName, setSharedMessageShowName] = useState(true);
   const [sharedNoteUpdatedAt, setSharedNoteUpdatedAt] = useState("");
   const [sharedNoteLoading, setSharedNoteLoading] = useState(true);
   const [sharedNoteSaving, setSharedNoteSaving] = useState(false);
-  const [sharedNoteDirty, setSharedNoteDirty] = useState(false);
   const [sharedNoteError, setSharedNoteError] = useState("");
 
   const [pbpComparePlayer1, setPbpComparePlayer1] = useState("");
@@ -1525,6 +1589,31 @@ export default function App() {
   const [selectedModalPlayer, setSelectedModalPlayer] = useState(null);
   const [recentGames, setRecentGames] = useState([]);
   const [isModalLoading, setIsModalLoading] = useState(false);
+
+
+  const handleGoogleCredential = useCallback((response) => {
+    try {
+      const payload = decodeJwtPayload(response.credential);
+      const nextProfile = {
+        name: payload.name || payload.email || "Google user",
+        email: payload.email || "",
+        picture: payload.picture || "",
+      };
+      setProfileUser(nextProfile);
+      setStoredProfile(nextProfile);
+      setGoogleAuthError("");
+      setProfileMenuOpen(false);
+    } catch {
+      setGoogleAuthError("Google sign-in succeeded, but the profile could not be read.");
+    }
+  }, []);
+
+  const handleProfileLogout = useCallback(() => {
+    setProfileUser(null);
+    setStoredProfile(null);
+    window.google?.accounts?.id?.disableAutoSelect();
+    setProfileMenuOpen(false);
+  }, []);
 
   const handlePlayerRowClick = async (row) => {
     // Only open the modal if we click a row that has a player ID in the key
@@ -1741,9 +1830,111 @@ export default function App() {
     };
   }, [advancedTabsOpen]);
 
+
+  useEffect(() => {
+    if (!topBarAutoRefreshOpen) {
+      return;
+    }
+    const handleMouseDown = (event) => {
+      if (
+        topBarAutoRefreshMenuRef.current?.contains(event.target) ||
+        topBarAutoRefreshButtonRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+      setTopBarAutoRefreshOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setTopBarAutoRefreshOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleMouseDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleMouseDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [topBarAutoRefreshOpen]);
+
+  useEffect(() => {
+    if (!GOOGLE_CLIENT_ID) {
+      return;
+    }
+    if (window.google?.accounts?.id) {
+      setGoogleAuthReady(true);
+      return;
+    }
+
+    let attempts = 0;
+    const scriptCheckInterval = window.setInterval(() => {
+      attempts += 1;
+      if (window.google?.accounts?.id) {
+        window.clearInterval(scriptCheckInterval);
+        setGoogleAuthReady(true);
+      } else if (attempts >= 50) {
+        window.clearInterval(scriptCheckInterval);
+        setGoogleAuthError("Google sign-in could not load.");
+      }
+    }, 100);
+
+    return () => window.clearInterval(scriptCheckInterval);
+  }, []);
+
+  useEffect(() => {
+    if (!GOOGLE_CLIENT_ID || !googleAuthReady || profileUser) {
+      return;
+    }
+    if (!googleAuthInitializedRef.current) {
+      window.google.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleGoogleCredential,
+        auto_select: false,
+      });
+      googleAuthInitializedRef.current = true;
+    }
+    if (profileMenuOpen && googleSignInButtonRef.current) {
+      googleSignInButtonRef.current.innerHTML = "";
+      window.google.accounts.id.renderButton(googleSignInButtonRef.current, {
+        theme: "outline",
+        size: "medium",
+        type: "standard",
+        text: "signin_with",
+        shape: "rectangular",
+      });
+    }
+  }, [googleAuthReady, handleGoogleCredential, profileMenuOpen, profileUser]);
+
+  useEffect(() => {
+    if (!profileMenuOpen) {
+      return;
+    }
+    const handleMouseDown = (event) => {
+      if (
+        profileMenuRef.current?.contains(event.target) ||
+        profileMenuButtonRef.current?.contains(event.target)
+      ) {
+        return;
+      }
+      setProfileMenuOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setProfileMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleMouseDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleMouseDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [profileMenuOpen]);
+
   useEffect(() => {
     if (!isAdvancedView) {
       setAdvancedTabsOpen(false);
+      setTopBarAutoRefreshOpen(false);
     }
   }, [isAdvancedView]);
 
@@ -1765,13 +1956,7 @@ export default function App() {
     loadEspnTeams();
   }, [loadEspnTeams]);
 
-  useEffect(() => {
-    sharedNoteTextRef.current = sharedNoteText;
-  }, [sharedNoteText]);
 
-  useEffect(() => {
-    sharedNoteDirtyRef.current = sharedNoteDirty;
-  }, [sharedNoteDirty]);
 
   useEffect(() => {
     trendsUpdatingRef.current = trendsUpdating;
@@ -1815,15 +2000,23 @@ export default function App() {
   const loadSharedNote = useCallback(async () => {
     try {
       const payload = await fetchJson(`${API_BASE}/api/shared-note`, {}, 1);
-      const nextText = String(payload.text || "");
+      const nextMessages = Array.isArray(payload.messages)
+        ? payload.messages.map((message) => ({
+            id: String(message.id || ""),
+            text: String(message.text || ""),
+            authorName:
+              String(message.author_name || "") === "Anonymous"
+                ? ""
+                : String(message.author_name || ""),
+            authorEmail: String(message.author_email || ""),
+            createdAt: String(message.created_at || ""),
+          }))
+        : [];
       const nextUpdatedAt = String(payload.updated_at || "");
       setSharedNoteError("");
       setSharedNoteUpdatedAt(nextUpdatedAt);
       setSharedNoteLoading(false);
-      if (!sharedNoteDirtyRef.current || sharedNoteTextRef.current === nextText) {
-        setSharedNoteText(nextText);
-        setSharedNoteDirty(false);
-      }
+      setSharedMessages(nextMessages);
     } catch (error) {
       setSharedNoteLoading(false);
       setSharedNoteError(error.message);
@@ -1837,6 +2030,14 @@ export default function App() {
     }, 2000);
     return () => window.clearInterval(intervalId);
   }, [loadSharedNote]);
+
+  useEffect(() => {
+    const messagesList = sharedMessagesListRef.current;
+    if (!messagesList) {
+      return;
+    }
+    messagesList.scrollTop = messagesList.scrollHeight;
+  }, [sharedMessages]);
 
   const loadSeasonPlayers = useCallback(async (side, teamId) => {
     const normalizedTeamId = normalizeTeamIdInput(teamId);
@@ -2391,7 +2592,11 @@ export default function App() {
     setPbpAppliedFilters({ ...DEFAULT_PBP_ADVANCED_FILTERS });
   }, []);
 
-  const saveSharedNote = useCallback(async (nextText) => {
+  const sendSharedMessage = useCallback(async () => {
+    const nextText = sharedMessageDraft.trim();
+    if (!nextText || !profileUser) {
+      return;
+    }
     setSharedNoteSaving(true);
     setSharedNoteError("");
     try {
@@ -2400,47 +2605,46 @@ export default function App() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: nextText }),
+          body: JSON.stringify({
+            text: nextText,
+            author_name: sharedMessageShowName ? profileUser.name || "" : "",
+            author_email: profileUser.email || "",
+          }),
         },
         1,
       );
-      const savedText = String(payload.text || "");
+      const nextMessages = Array.isArray(payload.messages)
+        ? payload.messages.map((message) => ({
+            id: String(message.id || ""),
+            text: String(message.text || ""),
+            authorName:
+              String(message.author_name || "") === "Anonymous"
+                ? ""
+                : String(message.author_name || ""),
+            authorEmail: String(message.author_email || ""),
+            createdAt: String(message.created_at || ""),
+          }))
+        : [];
       const savedUpdatedAt = String(payload.updated_at || "");
+
+      setSharedMessages(nextMessages);
       setSharedNoteUpdatedAt(savedUpdatedAt);
-      if (sharedNoteTextRef.current === nextText) {
-        setSharedNoteText(savedText);
-        setSharedNoteDirty(false);
-      }
+      setSharedMessageDraft("");
     } catch (error) {
       setSharedNoteError(error.message);
     } finally {
       setSharedNoteSaving(false);
     }
-  }, []);
+  }, [profileUser, sharedMessageDraft, sharedMessageShowName]);
 
-  const handleSharedNoteChange = useCallback(
+  const handleSharedMessageSubmit = useCallback(
     (event) => {
-      const nextText = event.target.value;
-      setSharedNoteText(nextText);
-      setSharedNoteDirty(true);
-      setSharedNoteError("");
-      if (sharedNoteSaveTimeoutRef.current) {
-        window.clearTimeout(sharedNoteSaveTimeoutRef.current);
-      }
-      sharedNoteSaveTimeoutRef.current = window.setTimeout(() => {
-        saveSharedNote(nextText);
-      }, 350);
+      event.preventDefault();
+      sendSharedMessage();
     },
-    [saveSharedNote],
+    [sendSharedMessage],
   );
 
-  useEffect(() => {
-    return () => {
-      if (sharedNoteSaveTimeoutRef.current) {
-        window.clearTimeout(sharedNoteSaveTimeoutRef.current);
-      }
-    };
-  }, []);
 
   const pbpAdvancedControls = (
     <details
@@ -2636,7 +2840,7 @@ export default function App() {
   const advancedTabOptions = [
     { key: "gameData", label: "Game Data" },
     { key: "trends", label: "Trends" },
-    { key: "sharedNotes", label: "Shared Notes" },
+    { key: "sharedNotes", label: "Messages" },
   ];
   const showSeasonData = advancedTabs.seasonData;
   const showGameData = advancedTabs.gameData;
@@ -2658,14 +2862,14 @@ export default function App() {
     (showSeasonData || showGameData || showTrends || showSharedNotes);
 
   const sharedNoteStatus = sharedNoteLoading
-    ? "Loading shared notes..."
+    ? "Loading messages..."
     : sharedNoteSaving
-      ? "Saving..."
-      : sharedNoteDirty
-        ? "Saving soon..."
-        : sharedNoteUpdatedAt
-          ? `Updated ${new Date(sharedNoteUpdatedAt).toLocaleString()}`
-          : "No shared note yet.";
+      ? "Sending..."
+      : sharedNoteUpdatedAt
+        ? `Updated ${new Date(sharedNoteUpdatedAt).toLocaleString()}`
+        : sharedMessages.length
+          ? `${sharedMessages.length} messages`
+          : "No messages yet.";
 
   const sharedNotePanelBody = (
     <>
@@ -2673,15 +2877,70 @@ export default function App() {
         <span>{sharedNoteStatus}</span>
         {sharedNoteError ? <span className="error"> {sharedNoteError}</span> : null}
       </div>
-      <div className="shared-note-body">
-        <textarea
-          className="shared-note-input"
-          value={sharedNoteText}
-          onChange={handleSharedNoteChange}
-
-          readOnly={!isAdvancedView}
-          aria-readonly={!isAdvancedView}
-        />
+      <div className="shared-messages-body">
+        <div className="shared-messages-list" ref={sharedMessagesListRef}>
+          {sharedMessages.length ? (
+            sharedMessages.map((message, index) => (
+              <article
+                className="shared-message"
+                key={message.id || `${message.createdAt}-${index}`}
+              >
+                <div className="shared-message-content">
+                  <div className="shared-message-meta">
+                    {message.authorName ? <strong>{message.authorName}</strong> : null}
+                    {message.createdAt ? (
+                      <span>
+                        {new Date(message.createdAt).toLocaleTimeString(undefined, {
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    ) : null}
+                  </div>
+                  <p>{message.text}</p>
+                </div>
+              </article>
+            ))
+          ) : (
+            <div className="shared-messages-empty">No messages yet.</div>
+          )}
+        </div>
+        {isAdvancedView ? (
+          <form className="shared-message-composer" onSubmit={handleSharedMessageSubmit}>
+            <div className="shared-message-composer-options">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={sharedMessageShowName}
+                  onChange={(event) => setSharedMessageShowName(event.target.checked)}
+                  disabled={!profileUser}
+                />
+                <span>Show name</span>
+              </label>
+              {!profileUser ? (
+                <span className="shared-message-login-required">
+                  Log in to send messages.
+                </span>
+              ) : null}
+            </div>
+            <textarea
+              value={sharedMessageDraft}
+              onChange={(event) => {
+                setSharedMessageDraft(event.target.value);
+                setSharedNoteError("");
+              }}
+              placeholder="Send a message..."
+              rows={3}
+              disabled={!profileUser}
+            />
+            <button
+              type="submit"
+              disabled={sharedNoteSaving || !sharedMessageDraft.trim() || !profileUser}
+            >
+              {sharedNoteSaving ? "Sending..." : "Send"}
+            </button>
+          </form>
+        ) : null}
       </div>
     </>
   );
@@ -2756,32 +3015,58 @@ export default function App() {
                   {pbpUpdating ? "Refreshing..." : "Refresh"}
                 </button>
                 <div className="top-bar-auto-refresh">
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={pbpAutoRefreshEnabled}
-                      onChange={(event) =>
-                        setPbpAutoRefreshEnabled(event.target.checked)
-                      }
-                    />
-                    <span>Auto Refresh every</span>
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={pbpAutoRefreshSeconds}
-                    onChange={(event) => {
-                      const nextValue = Number(event.target.value);
-                      setPbpAutoRefreshSeconds(
-                        Number.isFinite(nextValue) && nextValue > 0
-                          ? nextValue
-                          : 1,
-                      );
-                    }}
-                    disabled={!pbpAutoRefreshEnabled}
-                  />
-                  <span>seconds</span>
+                  <button
+                    type="button"
+                    className="neutral auto-refresh-toggle"
+                    onClick={() => setTopBarAutoRefreshOpen((prev) => !prev)}
+                    aria-haspopup="menu"
+                    aria-expanded={topBarAutoRefreshOpen}
+                    aria-label={
+                      pbpAutoRefreshEnabled
+                        ? `Auto refresh every ${pbpAutoRefreshSeconds} seconds`
+                        : "Auto refresh settings"
+                    }
+                    title="Auto refresh settings"
+                    ref={topBarAutoRefreshButtonRef}
+                  >
+                    {pbpAutoRefreshEnabled ? (
+                      <span>{pbpAutoRefreshSeconds}s</span>
+                    ) : null}
+                    <span aria-hidden="true">{topBarAutoRefreshOpen ? "▴" : "▾"}</span>
+                  </button>
+                  {topBarAutoRefreshOpen ? (
+                    <div
+                      className="top-bar-auto-refresh-menu"
+                      ref={topBarAutoRefreshMenuRef}
+                    >
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={pbpAutoRefreshEnabled}
+                          onChange={(event) =>
+                            setPbpAutoRefreshEnabled(event.target.checked)
+                          }
+                        />
+                        <span>Auto Refresh every</span>
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={pbpAutoRefreshSeconds}
+                        onChange={(event) => {
+                          const nextValue = Number(event.target.value);
+                          setPbpAutoRefreshSeconds(
+                            Number.isFinite(nextValue) && nextValue > 0
+                              ? nextValue
+                              : 1,
+                          );
+                        }}
+                        disabled={!pbpAutoRefreshEnabled}
+                      />
+                      <span>seconds</span>
+                    </div>
+                  ) : null}
                 </div>
               </div>
             </div>
@@ -2813,6 +3098,49 @@ export default function App() {
                 Basic
               </button>
             </div>
+          </div>
+          <div className="profile-menu">
+            <button
+              type="button"
+              className="profile-menu-toggle"
+              onClick={() => setProfileMenuOpen((prev) => !prev)}
+              aria-haspopup="menu"
+              aria-expanded={profileMenuOpen}
+              aria-label="Profile menu"
+              title={profileUser ? profileUser.name : "Anonymous profile"}
+              ref={profileMenuButtonRef}
+            >
+              {profileUser?.picture ? (
+                <img src={profileUser.picture} alt="" />
+              ) : (
+                <span aria-hidden="true">?</span>
+              )}
+            </button>
+            {profileMenuOpen ? (
+              <div className="profile-menu-dropdown" ref={profileMenuRef}>
+                <div className="profile-menu-status">
+                  <strong>{profileUser?.name || "Anonymous"}</strong>
+                  {profileUser?.email ? <span>{profileUser.email}</span> : null}
+                </div>
+                {profileUser ? (
+                  <button
+                    type="button"
+                    className="profile-menu-item neutral"
+                    onClick={handleProfileLogout}
+                  >
+                    Log out
+                  </button>
+                ) : GOOGLE_CLIENT_ID ? (
+                  <div className="google-sign-in-button" ref={googleSignInButtonRef}>
+                    {googleAuthError ? <span>{googleAuthError}</span> : null}
+                  </div>
+                ) : (
+                  <span className="profile-menu-help">
+                    Add VITE_GOOGLE_CLIENT_ID to enable Google login.
+                  </span>
+                )}
+              </div>
+            ) : null}
           </div>
         </div>
       </div>
@@ -3327,17 +3655,17 @@ export default function App() {
                     className="panel-collapsed"
                     onClick={() => savedPanelRef.current?.expand()}
                   >
-                    <span>Shared Notes</span>
+                    <span>Messages</span>
                   </div>
                 ) : (
                   <div className="insights-column">
                     <div className="insights-column-header">
-                      <span>Shared Notes</span>
+                      <span>Messages</span>
                       <CollapseButton
                         panelRef={savedPanelRef}
                         collapsed={savedCollapsed}
                         onCollapsedChange={setSavedCollapsed}
-                        title="Shared Notes"
+                        title="Messages"
                       />
                     </div>
                     {sharedNotePanelBody}
@@ -3473,7 +3801,7 @@ export default function App() {
           <Panel defaultSize={32} minSize={22}>
             <div className="panel shared-note-basic-panel">
               <div className="section-header">
-                <h2>Shared Notes</h2>
+                <h2>Messages</h2>
               </div>
               {sharedNotePanelBody}
             </div>

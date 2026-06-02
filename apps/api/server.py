@@ -81,8 +81,9 @@ _ATHLETE_NAME_CACHE: Dict[str, str] = {}
 ESPN_PBP_LEAGUE = "mens-college-basketball"
 ESPN_PBP_GAME_ID = "401809104"
 PBP_SCHEMA_VERSION = "espn-pbp-v1"
-SHARED_NOTE_PATH = DATA_ROOT / "shared-note.json"
 _SHARED_NOTE_LOCK = Lock()
+_SHARED_NOTE_MESSAGES: List[Dict[str, Any]] = []
+_SHARED_NOTE_UPDATED_AT = ""
 
 # http://sports.core.api.espn.com/v2/sports/basketball/leagues/mens-college-basketball/seasons/2026/teams/2540/events?limit=50&lang=en&region=us
 # https://cdn.espn.com/core/mens-college-basketball/playbyplay?gameid=401826049&xhr=1&render=false&userab=18
@@ -367,23 +368,40 @@ def pbp_data_path(game_id: Optional[str] = None) -> Path:
 
 
 def read_shared_note() -> Dict[str, Any]:
-    payload = read_json_file(SHARED_NOTE_PATH) or {}
-    text = payload.get("text", "")
-    updated_at = payload.get("updated_at", now_iso())
-    return {
-        "text": str(text),
-        "updated_at": str(updated_at),
-    }
-
-
-def write_shared_note(text: str) -> Dict[str, Any]:
-    payload = {
-        "text": str(text),
-        "updated_at": now_iso(),
-    }
     with _SHARED_NOTE_LOCK:
-        write_json_file(SHARED_NOTE_PATH, payload)
-    return payload
+        return {
+            "messages": [dict(message) for message in _SHARED_NOTE_MESSAGES],
+            "updated_at": _SHARED_NOTE_UPDATED_AT,
+        }
+
+
+def append_shared_note_message(
+    text: str,
+    author_name: str = "",
+    author_email: str = "",
+    author_picture: str = "",
+) -> Dict[str, Any]:
+    global _SHARED_NOTE_UPDATED_AT
+
+    trimmed_text = str(text).strip()
+    if not trimmed_text:
+        raise ValueError("message text is required")
+    with _SHARED_NOTE_LOCK:
+        created_at = now_iso()
+        message = {
+            "id": hashlib.sha1(f"{created_at}:{author_email}:{trimmed_text}".encode("utf-8")).hexdigest()[:16],
+            "text": trimmed_text,
+            "author_name": str(author_name or ""),
+            "author_email": str(author_email or ""),
+            "author_picture": str(author_picture or ""),
+            "created_at": created_at,
+        }
+        _SHARED_NOTE_MESSAGES.append(message)
+        _SHARED_NOTE_UPDATED_AT = created_at
+        return {
+            "messages": [dict(message) for message in _SHARED_NOTE_MESSAGES],
+            "updated_at": _SHARED_NOTE_UPDATED_AT,
+        }
 
 
 def espn_pbp_source_url(league: str, game_id: str, limit: Optional[int] = None, page_index: Optional[int] = None) -> str:
@@ -3429,7 +3447,11 @@ class ApiHandler(BaseHTTPRequestHandler):
                 text = body.get("text", "")
                 if not isinstance(text, str):
                     raise ValueError("text must be a string")
-                payload = write_shared_note(text)
+                payload = append_shared_note_message(
+                    text,
+                    author_name=str(body.get("author_name") or ""),
+                    author_email=str(body.get("author_email") or ""),
+                )
                 self._send_json(200, {"ok": True, **payload})
             except ValueError as exc:
                 self._send_json(400, {"error": str(exc)})

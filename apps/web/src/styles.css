@@ -108,6 +108,78 @@ body,
     color: var(--muted);
 }
 
+.profile-menu {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.profile-menu-toggle {
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid var(--line);
+    background: #ffffff;
+    color: var(--muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    overflow: hidden;
+}
+
+.profile-menu-toggle span {
+    font-size: 1rem;
+    color: inherit;
+}
+
+.profile-menu-toggle img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.profile-menu-dropdown {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 220px;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #ffffff;
+    box-shadow: 0 12px 24px rgba(30, 40, 30, 0.12);
+    display: grid;
+    gap: 8px;
+    z-index: 40;
+}
+
+.profile-menu-status {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.profile-menu-status strong {
+    color: var(--ink);
+    font-size: 0.9rem;
+    line-height: 1.2;
+}
+
+.profile-menu-status span,
+.profile-menu-help,
+.google-sign-in-button span {
+    color: var(--muted);
+    font-size: 0.78rem;
+    line-height: 1.3;
+}
+
+.profile-menu-item {
+    width: 100%;
+    justify-content: flex-start;
+}
+
 .top-bar-controls {
     display: flex;
     align-items: center;
@@ -143,13 +215,35 @@ body,
 }
 
 .top-bar-auto-refresh {
+    position: relative;
     display: flex;
     align-items: center;
     gap: 6px;
-    flex-wrap: wrap;
 }
 
-.top-bar-auto-refresh input[type="number"] {
+.auto-refresh-toggle {
+    min-width: 38px;
+    justify-content: center;
+}
+
+.top-bar-auto-refresh-menu {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    min-width: 320px;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #ffffff;
+    box-shadow: 0 12px 24px rgba(30, 40, 30, 0.12);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+    z-index: 40;
+}
+
+.top-bar-auto-refresh-menu input[type="number"] {
     width: 76px;
 }
 
@@ -534,25 +628,101 @@ textarea {
     font-size: 0.83rem;
 }
 
-.shared-note-body {
-    display: flex;
-    flex: 1;
-    min-height: 0;
-    padding: 0 12px 12px;
-}
-
-.shared-note-input {
-    width: 100%;
-    min-height: 180px;
-    flex: 1;
-    resize: vertical;
-}
-
 .shared-note-basic-panel {
     display: flex;
     flex-direction: column;
     min-height: 0;
     flex: 0 0 32%;
+}
+
+.shared-messages-body {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    padding: 0 12px 12px;
+    gap: 10px;
+}
+
+.shared-messages-list {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-right: 2px;
+}
+
+.shared-message {
+    display: block;
+}
+
+.shared-message-content {
+    min-width: 0;
+    flex: 1;
+}
+
+.shared-message-meta {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.shared-message-meta strong {
+    color: var(--ink);
+    font-size: 0.86rem;
+}
+
+.shared-message-meta span,
+.shared-messages-empty {
+    color: var(--muted);
+    font-size: 0.76rem;
+}
+
+.shared-message-content p {
+    margin: 2px 0 0;
+    color: var(--ink);
+    font-size: 0.88rem;
+    line-height: 1.35;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+
+.shared-message-composer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: end;
+}
+
+.shared-message-composer-options {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.shared-message-composer-options label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+    font-size: 0.82rem;
+}
+
+.shared-message-login-required {
+    color: var(--muted);
+    font-size: 0.78rem;
+}
+
+.shared-message-composer textarea {
+    margin: 0;
+    min-height: 64px;
+    resize: vertical;
 }
 
 .basic-view-shell .trends-panel {
