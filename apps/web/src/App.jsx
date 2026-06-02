@@ -1,7 +1,8 @@
 import logo from './logo.png'
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import Heatmap from "./components/Heatmap/Heatmap";
+import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend } from 'recharts';
 import {
   buildPbpFilterQuery,
   canApplyPbpAdvancedFilters,
@@ -348,6 +349,8 @@ function TeamPieComparison({ liveStats, teamName }) {
                 borderRadius: "8px",
                 border: "none",
                 boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                backgroundColor: "rgba(0, 54, 96, 0.95)",
+                color: "var(--ink)"
               }}
             />
             <Bar dataKey="pie" fill="var(--accent)" radius={[0, 4, 4, 0]} barSize={20} />
@@ -521,72 +524,189 @@ function buildCustomPlayerTimeline(rows, playerId, playerName, teamId) {
 }
 
 function getStatEvents(playerTimeline, statKey) {
-    return (
-        playerTimeline?.stats?.find((stat) => stat.stat_key === statKey)?.events || []
-        );
-    }
+  return (
+    playerTimeline?.stats?.find((stat) => stat.stat_key === statKey)?.events || []
+  );
+}
 
 function buildWarTimeline(p1Timeline, p2Timeline, player1Name, player2Name) {
-    if (!p1Timeline || !p2Timeline) {
-        return null;
-        }
-    const statKeys = ["points", "rebounds", "assists"];
-    const comparisonStats = statKeys.map((statKey) => {
-        const p1Events = getStatEvents(p1Timeline, statKey);
-        const p2Events = getStatEvents(p2Timeline, statKey);
-        const combinedEvents = [
-            ...p1Events.map((event) => ({
-                ...event,
-                playerKey: "playerOne",
-                })),
-            ...p2Events.map((event) => ({
-                ...event,
-                playerKey: "playerTwo",
-                })),
-            ];
+  if (!p1Timeline || !p2Timeline) {
+    return null;
+  }
+  const statKeys = ["points", "rebounds", "assists"];
+  const comparisonStats = statKeys.map((statKey) => {
+    const p1Events = getStatEvents(p1Timeline, statKey);
+    const p2Events = getStatEvents(p2Timeline, statKey);
+    const combinedEvents = [
+      ...p1Events.map((event) => ({
+        ...event,
+        playerKey: "playerOne",
+      })),
+      ...p2Events.map((event) => ({
+        ...event,
+        playerKey: "playerTwo",
+      })),
+    ];
 
-        combinedEvents.sort((a,b) => {
-            const aPeriod = Number(a.period || 0);
-            const bPeriod = Number(b.period || 0);
+    combinedEvents.sort((a, b) => {
+      const aPeriod = Number(a.period || 0);
+      const bPeriod = Number(b.period || 0);
 
-            if(aPeriod !== bPeriod) {
-                return aPeriod - bPeriod;
-            }
-            return Number(a.timestamp || 0) - Number(b.timestamp || 0);
-        });
+      if (aPeriod !== bPeriod) {
+        return aPeriod - bPeriod;
+      }
+      return Number(a.timestamp || 0) - Number(b.timestamp || 0);
+    });
 
-        let p1Total = 0;
-        let p2Total = 0;
-        const diffEvents = combinedEvents.map((event) => {
-            const increment = Number(event.increment || 0);
-            if (event.playerKey === "playerOne") {
-                p1Total += increment;
-            } else {
-                p2Total += increment;
-            }
-            return {
-                timestamp: event.timestamp,
-                period: event.period,
-                increment: event.playerKey === "playerOne" ? increment : -increment,
-                total: p1Total - p2Total,
-                p1Total,
-                p2Total
-            };
-        });
-
-        return {
-            stat_key: statKey,
-            events: diffEvents,
-        };
+    let p1Total = 0;
+    let p2Total = 0;
+    const diffEvents = combinedEvents.map((event) => {
+      const increment = Number(event.increment || 0);
+      if (event.playerKey === "playerOne") {
+        p1Total += increment;
+      } else {
+        p2Total += increment;
+      }
+      return {
+        timestamp: event.timestamp,
+        period: event.period,
+        increment: event.playerKey === "playerOne" ? increment : -increment,
+        total: p1Total - p2Total,
+        p1Total,
+        p2Total
+      };
     });
 
     return {
-        player_name: `${player1Name || "Player 1"} vs ${player2Name || "Player 2"}`,
-        team_id: "",
-        stats: comparisonStats,
+      stat_key: statKey,
+      events: diffEvents,
     };
+  });
 
-   }
+  return {
+    player_name: `${player1Name || "Player 1"} vs ${player2Name || "Player 2"}`,
+    team_id: "",
+    stats: comparisonStats,
+  };
+
+}
+
+// ── Score Differential helpers ──
+function pbpRowToGameMin(row) {
+  const clockStr = String(row.clock || "").trim();
+  const m = clockStr.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const minsRemaining = Number(m[1]) + Number(m[2]) / 60;
+  const period = String(row.period || "").toLowerCase();
+  if (period.includes("1st") || period === "1") return +(20 - minsRemaining).toFixed(3);
+  if (period.includes("2nd") || period === "2") return +(40 - minsRemaining).toFixed(3);
+  if (period.includes("ot") || period.includes("overtime")) return +(45 - minsRemaining).toFixed(3);
+  return null;
+}
+
+function ScoreDiffTooltip({ active, payload, ucsbName, opponentName }) {
+  if (!active || !payload?.length) return null;
+  const d = payload[0]?.payload;
+  if (!d) return null;
+  const leading = d.diff >= 0
+    ? { name: ucsbName, color: "#16a34a" }
+    : { name: opponentName, color: "#b03020" };
+  return (
+    <div className="custom-tooltip">
+      <span className="label">{d.label}</span>
+      <div style={{ display: "flex", gap: 12, marginTop: 4 }}>
+        <span style={{ fontSize: "0.85rem" }}>{ucsbName}: <strong>{d.ucsb}</strong></span>
+        <span style={{ fontSize: "0.85rem" }}>{opponentName}: <strong>{d.opp}</strong></span>
+      </div>
+      <div className="value" style={{ color: leading.color }}>
+        {d.diff >= 0 ? `${ucsbName} +${d.diff}` : `${opponentName} +${Math.abs(d.diff)}`}
+      </div>
+    </div>
+  );
+}
+
+function ScoreDifferentialChart({ rows, ucsbTeamId, ucsbName, opponentName }) {
+  const data = useMemo(() => {
+    if (!rows?.length) return [];
+
+    // Detect whether UCSB is home or away
+    let ucsbIsHome = null;
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const rowTeamId = String(row.team_id || "").trim().toLowerCase();
+      const targetTeamId = String(ucsbTeamId).trim().toLowerCase();
+      const isUcsb = rowTeamId === targetTeamId || rowTeamId === "ucsb" || rowTeamId === "2540";
+      if (!row.scoring_play || !isUcsb) continue;
+      const prev = rows[i - 1];
+      if (row.home_score > prev.home_score) { ucsbIsHome = true; break; }
+      if (row.away_score > prev.away_score) { ucsbIsHome = false; break; }
+    }
+    if (ucsbIsHome === null) ucsbIsHome = true;
+
+    const points = [{ gameMin: 0, label: "Tip-off", ucsb: 0, opp: 0, diff: 0, ucsbLead: 0, oppLead: 0 }];
+    for (const row of rows) {
+      if (!row.scoring_play) continue;
+      const gameMin = pbpRowToGameMin(row);
+      if (gameMin === null) continue;
+      const ucsb = ucsbIsHome ? (row.home_score ?? 0) : (row.away_score ?? 0);
+      const opp  = ucsbIsHome ? (row.away_score ?? 0) : (row.home_score ?? 0);
+      const diff = ucsb - opp;
+      points.push({
+        gameMin,
+        label: `${row.period} — ${row.clock}`,
+        ucsb, opp, diff,
+        ucsbLead: diff >= 0 ? diff : 0,
+        oppLead:  diff <  0 ? diff : 0,
+      });
+    }
+    return points;
+  }, [rows, ucsbTeamId]);
+
+  const maxMin = data.length ? Math.ceil(data[data.length - 1].gameMin) : 40;
+  const ticks = maxMin <= 40 ? [0, 10, 20, 30, 40] : [0, 10, 20, 30, 40, maxMin];
+
+  if (!data.length) {
+    return <p className="placeholder" style={{ padding: 16 }}>No scoring play data available.</p>;
+  }
+
+  return (
+    <div style={{ padding: "16px 16px 8px" }}>
+      <ResponsiveContainer width="100%" height={320}>
+        <AreaChart data={data} margin={{ top: 12, right: 24, left: 8, bottom: 0 }}>
+          <defs>
+            <linearGradient id="ucsbGrad" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="5%"  stopColor="#16a34a" stopOpacity={0.65} />
+              <stop offset="95%" stopColor="#16a34a" stopOpacity={0.05} />
+            </linearGradient>
+            <linearGradient id="oppGrad" x1="0" y1="1" x2="0" y2="0">
+              <stop offset="5%"  stopColor="#b03020" stopOpacity={0.65} />
+              <stop offset="95%" stopColor="#b03020" stopOpacity={0.05} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="#c0d8ed" />
+          <XAxis
+            dataKey="gameMin"
+            type="number"
+            domain={[0, maxMin]}
+            ticks={ticks}
+            tickFormatter={v => `${v}m`}
+            label={{ value: "Game time (min)", position: "insideBottom", offset: -2, fontSize: 11 }}
+          />
+          <YAxis tickFormatter={v => v > 0 ? `+${v}` : String(v)} width={38} />
+          <Tooltip content={<ScoreDiffTooltip ucsbName={ucsbName} opponentName={opponentName} />} />
+          <ReferenceLine y={0} stroke="#555" strokeWidth={2} />
+          <ReferenceLine x={20} stroke="#aaa" strokeDasharray="5 4" label={{ value: "Half", position: "insideTopRight", fontSize: 10 }} />
+          <Legend
+            formatter={(value) => value === "ucsbLead" ? ucsbName : opponentName}
+            wrapperStyle={{ fontSize: "0.82rem", paddingTop: 8 }}
+          />
+          <Area type="monotone" dataKey="ucsbLead" stroke="#16a34a" strokeWidth={2} fill="url(#ucsbGrad)" dot={false} activeDot={{ r: 4 }} />
+          <Area type="monotone" dataKey="oppLead"  stroke="#b03020" strokeWidth={2} fill="url(#oppGrad)"  dot={false} activeDot={{ r: 4 }} />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
 
 function parseClockRemainingSeconds(clockValue) {
   const raw = String(clockValue || "").trim();
@@ -1002,19 +1122,19 @@ function buildPlayerNameMapFromLiveStats(payload) {
 }
 
 function getPerformanceColor(liveStats, seasonStatsPer, threshold) {
- const stat = parseFloat(liveStats);
+  const stat = parseFloat(liveStats);
   const per_game = parseFloat(seasonStatsPer);
 
   if (isNaN(stat) || isNaN(per_game) || per_game === 0) {
-      return undefined;
+    return undefined;
   }
 
   const diff = (stat - per_game) / per_game;
 
   if (diff >= threshold) {
-      return "rgba(0, 255, 0, 0.2)";
+    return "rgba(0, 255, 0, 0.2)";
   } else if (diff <= -threshold) {
-      return "rgba(255, 0, 0, 0.2)";
+    return "rgba(255, 0, 0, 0.2)";
   }
 
   return undefined;
@@ -1143,7 +1263,7 @@ function DataTable({ columns, rows, state, onChange, extraControls = null, getRo
                     }
                   }}
                   className={`${isSelected ? "selected" : ""} ${isHighlighted ? "highlighted" : ""}`.trim()}
-                  style={{...rowStyle, cursor: onRowClick ? 'pointer' : 'default'}}
+                  style={{ ...rowStyle, cursor: onRowClick ? 'pointer' : 'default' }}
                   onClick={() => {
                     onChange({
                       selectedRowKey: row.row_key || "",
@@ -1283,38 +1403,38 @@ function collectPlayerPbpIncrements(row, seenScoringEvents) {
 }
 
 function parseClock(clockValue) {
-    const clock = String(clockValue || "").trim();
-    const match = clock.match(/^(\d+):(\d{2})$/);
-    if (!match) return 0;
-    const minutes = Number(match[1]);
-    const seconds = Number(match[2]);
-    return minutes *60 + seconds;
-    }
+  const clock = String(clockValue || "").trim();
+  const match = clock.match(/^(\d+):(\d{2})$/);
+  if (!match) return 0;
+  const minutes = Number(match[1]);
+  const seconds = Number(match[2]);
+  return minutes * 60 + seconds;
+}
 
 function parsePeriod(periodValue) {
-    const raw = String(periodValue || "").toLowerCase().trim();
-    if (!raw) return 1;
-    if (raw.includes("1")) return 1;
-    if (raw.includes("2")) return 2;
-    if (raw.includes("3")) return 3;
-    if (raw.includes("4")) return 4;
-    const numeric = Number(raw);
-    return Number.isFinite(numeric) && numeric >0 ? numeric : 1;
-    }
+  const raw = String(periodValue || "").toLowerCase().trim();
+  if (!raw) return 1;
+  if (raw.includes("1")) return 1;
+  if (raw.includes("2")) return 2;
+  if (raw.includes("3")) return 3;
+  if (raw.includes("4")) return 4;
+  const numeric = Number(raw);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : 1;
+}
 
 function getElapsedGameMinute(row) {
-    const period = parsePeriod(row.period || 1);
-    const clockSeconds = parseClock(row.clock);
-    const Regulation_Period_Seconds = 20 * 60
-    const Overtime_Seconds = 5 * 60
-    let elapsedSeconds = 0;
-    if (period <= 2) {
-        elapsedSeconds = (period - 1) * Regulation_Period_Seconds + (Regulation_Period_Seconds - clockSeconds);
-        } else {
-            elapsedSeconds = 2 * Regulation_Period_Seconds + (period - 3) * Overtime_Seconds + (Overtime_Seconds - clockSeconds);
-            }
-    return Math.floor(elapsedSeconds / 60)
-    }
+  const period = parsePeriod(row.period || 1);
+  const clockSeconds = parseClock(row.clock);
+  const Regulation_Period_Seconds = 20 * 60
+  const Overtime_Seconds = 5 * 60
+  let elapsedSeconds = 0;
+  if (period <= 2) {
+    elapsedSeconds = (period - 1) * Regulation_Period_Seconds + (Regulation_Period_Seconds - clockSeconds);
+  } else {
+    elapsedSeconds = 2 * Regulation_Period_Seconds + (period - 3) * Overtime_Seconds + (Overtime_Seconds - clockSeconds);
+  }
+  return Math.floor(elapsedSeconds / 60)
+}
 
 export default function App() {
   const [activeView, setActiveView] = useState("advanced");
@@ -1393,6 +1513,8 @@ export default function App() {
     source_url: "",
   });
   const [pbpGameId, setPbpGameId] = useState("401809115");
+  const [scoreDiffGameId, setScoreDiffGameId] = useState("401809115");
+  const [scoreDiffRows, setScoreDiffRows] = useState(null);
   const [pbpGameOptions, setPbpGameOptions] = useState([]);
   const [pbpAutoRefreshEnabled, setPbpAutoRefreshEnabled] = useState(false);
   const [pbpAutoRefreshSeconds, setPbpAutoRefreshSeconds] = useState(15);
@@ -1468,6 +1590,7 @@ export default function App() {
   const [recentGames, setRecentGames] = useState([]);
   const [isModalLoading, setIsModalLoading] = useState(false);
 
+
   const handleGoogleCredential = useCallback((response) => {
     try {
       const payload = decodeJwtPayload(response.credential);
@@ -1523,16 +1646,16 @@ export default function App() {
 
   const normalizedOpponentTeamId = useMemo(() => normalizeTeamIdInput(opponentTeamId), [opponentTeamId]);
   const sortedPlayers = useMemo(() => {
-  return Object.entries(trendsPlayerTimelines).sort(([, a], [, b]) => {
-    const aIsUcsb = a.team_id === UCSB_TEAM_ID;
-    const bIsUcsb = b.team_id === UCSB_TEAM_ID;
+    return Object.entries(trendsPlayerTimelines).sort(([, a], [, b]) => {
+      const aIsUcsb = a.team_id === UCSB_TEAM_ID;
+      const bIsUcsb = b.team_id === UCSB_TEAM_ID;
 
-    if (aIsUcsb && !bIsUcsb) return -1;
-    if (!aIsUcsb && bIsUcsb) return 1;
+      if (aIsUcsb && !bIsUcsb) return -1;
+      if (!aIsUcsb && bIsUcsb) return 1;
 
-    return (a.player_name || "").localeCompare(b.player_name || "");
-  });
-}, [trendsPlayerTimelines]);
+      return (a.player_name || "").localeCompare(b.player_name || "");
+    });
+  }, [trendsPlayerTimelines]);
 
   const teamNameById = useMemo(() => {
     const map = {};
@@ -1707,6 +1830,7 @@ export default function App() {
     };
   }, [advancedTabsOpen]);
 
+
   useEffect(() => {
     if (!topBarAutoRefreshOpen) {
       return;
@@ -1832,6 +1956,8 @@ export default function App() {
     loadEspnTeams();
   }, [loadEspnTeams]);
 
+
+
   useEffect(() => {
     trendsUpdatingRef.current = trendsUpdating;
   }, [trendsUpdating]);
@@ -1843,7 +1969,7 @@ export default function App() {
   const loadPbpIds = useCallback(async () => {
     try {
       const payload = await fetchJson(`${API_BASE}/api/gameids`, {}, 1);
-      setPbpGameOptions(payload.games.map((g) => ({ value: g.id, label: g.label })));
+      setPbpGameOptions(payload.games.map((g) => ({ value: g.id, label: g.label, opponentTeamId: g.opponent_team_id || '' })));
     } catch (error) {
       console.error("Error fetching PBP IDs:", error);
     }
@@ -1852,6 +1978,24 @@ export default function App() {
   useEffect(() => {
     loadPbpIds();
   }, [loadPbpIds]);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadScoreDiffRows() {
+      try {
+        const payload = await fetchJson(
+          `${API_BASE}/api/pbp?game_id=${encodeURIComponent(scoreDiffGameId)}`,
+          {},
+          1,
+        );
+        if (!cancelled) setScoreDiffRows(payload.rows || []);
+      } catch {
+        if (!cancelled) setScoreDiffRows([]);
+      }
+    }
+    loadScoreDiffRows();
+    return () => { cancelled = true; };
+  }, [scoreDiffGameId]);
 
   const loadSharedNote = useCallback(async () => {
     try {
@@ -2482,6 +2626,7 @@ export default function App() {
           }))
         : [];
       const savedUpdatedAt = String(payload.updated_at || "");
+
       setSharedMessages(nextMessages);
       setSharedNoteUpdatedAt(savedUpdatedAt);
       setSharedMessageDraft("");
@@ -2499,6 +2644,7 @@ export default function App() {
     },
     [sendSharedMessage],
   );
+
 
   const pbpAdvancedControls = (
     <details
@@ -2927,17 +3073,32 @@ export default function App() {
           </div>
         ) : null}
         <div className="top-app-bar-right">
-          <label>
-             <span className="label-inline">View:</span>
-             <select
-                value={activeView}
-                onChange={(event) => setActiveView(event.target.value)}
-             >
-                <option value="advanced">Advanced View</option>
-                <option value="basic">Basic View</option>
-                <option value="dataViz">Data Viz View</option>
-             </select>
-          </label>
+          <div className="top-bar-controls-main">
+            <span className="label-inline">View:</span>
+            <div className="game-data-subtabs">
+              <button
+                type="button"
+                className={activeView === "dataViz" ? "active" : ""}
+                onClick={() => setActiveView("dataViz")}
+              >
+                Data Viz
+              </button>
+              <button
+                type="button"
+                className={activeView === "advanced" ? "active" : ""}
+                onClick={() => setActiveView("advanced")}
+              >
+                Advanced
+              </button>
+              <button
+                type="button"
+                className={activeView === "basic" ? "active" : ""}
+                onClick={() => setActiveView("basic")}
+              >
+                Basic
+              </button>
+            </div>
+          </div>
           <div className="profile-menu">
             <button
               type="button"
@@ -2997,312 +3158,312 @@ export default function App() {
                 onCollapse={() => setGameDataCollapsed(true)}
                 onExpand={() => setGameDataCollapsed(false)}
               >
-            <div className="panel game-panel">
-              {gameDataCollapsed ? (
-                <div
-                  className="panel-collapsed"
-                  onClick={() => gameDataPanelRef.current?.expand()}
-                >
-                  <span>Game Data</span>
-                </div>
-              ) : (
-                <>
-                  <div className="section-header">
-                    <h2>Game Data</h2>
-                    <div className="game-data-subtabs">
-                      <button
-                        type="button"
-                        className={gameDataSubtab === "live-stats" ? "active" : ""}
-                        onClick={() => setGameDataSubtab("live-stats")}
-                      >
-                        Live Stats
-                      </button>
-                      <button
-                        type="button"
-                        className={gameDataSubtab === "play-by-play" ? "active" : ""}
-                        onClick={() => setGameDataSubtab("play-by-play")}
-                      >
-                        Play by Play
-                      </button>
-                      <button
-                        type="button"
-                        className={gameDataSubtab === "season-data" ? "active" : ""}
-                        onClick={() => setGameDataSubtab("season-data")}
-                      >
-                        Season Data
-                      </button>
+                <div className="panel game-panel">
+                  {gameDataCollapsed ? (
+                    <div
+                      className="panel-collapsed"
+                      onClick={() => gameDataPanelRef.current?.expand()}
+                    >
+                      <span>Game Data</span>
                     </div>
-                    <div className="panel-header-actions">
-                      <CollapseButton
-                        panelRef={gameDataPanelRef}
-                        collapsed={gameDataCollapsed}
-                        onCollapsedChange={setGameDataCollapsed}
-                        title="Game Data"
-                      />
-                    </div>
-                  </div>
-                  {gameDataSubtab === "live-stats" ? (
+                  ) : (
                     <>
-                      <div className="tab-tree live-stats-tree">
-                        <div className="branch">
-                          <h3>Team View</h3>
-                          <div className="leaf-list">
-                            <button type="button" className={`leaf ${activeLiveSide === "ucsb" ? "active" : ""}`} onClick={() => setActiveLiveSide("ucsb")}>
-                              UCSB
-                            </button>
-                            <button
-                              type="button"
-                              className={`leaf ${activeLiveSide === "opponent" ? "active" : ""}`}
-                              onClick={() => setActiveLiveSide("opponent")}
-                              disabled={!normalizedOpponentTeamId}
-                            >
-                              Opponent
-                            </button>
-                          </div>
+                      <div className="section-header">
+                        <h2>Game Data</h2>
+                        <div className="game-data-subtabs">
+                          <button
+                            type="button"
+                            className={gameDataSubtab === "live-stats" ? "active" : ""}
+                            onClick={() => setGameDataSubtab("live-stats")}
+                          >
+                            Live Stats
+                          </button>
+                          <button
+                            type="button"
+                            className={gameDataSubtab === "play-by-play" ? "active" : ""}
+                            onClick={() => setGameDataSubtab("play-by-play")}
+                          >
+                            Play by Play
+                          </button>
+                          <button
+                            type="button"
+                            className={gameDataSubtab === "season-data" ? "active" : ""}
+                            onClick={() => setGameDataSubtab("season-data")}
+                          >
+                            Season Data
+                          </button>
+                        </div>
+                        <div className="panel-header-actions">
+                          <CollapseButton
+                            panelRef={gameDataPanelRef}
+                            collapsed={gameDataCollapsed}
+                            onCollapsedChange={setGameDataCollapsed}
+                            title="Game Data"
+                          />
                         </div>
                       </div>
+                      {gameDataSubtab === "live-stats" ? (
+                        <>
+                          <div className="tab-tree live-stats-tree">
+                            <div className="branch">
+                              <h3>Team View</h3>
+                              <div className="leaf-list">
+                                <button type="button" className={`leaf ${activeLiveSide === "ucsb" ? "active" : ""}`} onClick={() => setActiveLiveSide("ucsb")}>
+                                  UCSB
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`leaf ${activeLiveSide === "opponent" ? "active" : ""}`}
+                                  onClick={() => setActiveLiveSide("opponent")}
+                                  disabled={!normalizedOpponentTeamId}
+                                >
+                                  Opponent
+                                </button>
+                              </div>
+                            </div>
+                          </div>
 
-                      <div className="table-status">
-                        {liveStatsLoading ? <span> Loading live stats...</span> : null}
-                        {liveStatsError ? <span className="error"> {liveStatsError}</span> : null}
-                        {!pbpData.rows.length ? (
-                          <span> Live stats are derived from play-by-play data. Click Update above to fetch PBP first.</span>
-                        ) : (
-                          <span> Derived from play-by-play ({pbpData.rows.length} plays).</span>
-                        )}
-                      </div>
-                      <div className="table-status">
-                        <span>
-                          {activeLiveSide === "ucsb" ? "UCSB" : "Opponent"} live player rows: {livePlayerRows}
-                        </span>
-                        <span style={{ marginLeft: "20px", marginRight: "10px" }}>
-                          Highlight Performance:
-                        </span>
-                        <select
-                          value={performanceMetric}
-                          onChange={(e) => setPerformanceMetric(e.target.value)}
-                          style={{ padding: "4px", borderRadius: "4px" }}
-                        >
-                          <option value="PTS">Points (PTS)</option>
-                          <option value="REB">Rebounds (REB)</option>
-                          <option value="AST">Assists (AST)</option>
-                          <option value="PIE">Player Impact(PIE)</option>
-                        </select>
-                      </div>
-                      <DataTable
-                        columns={livePlayersData.columns}
-                        rows={livePlayersData.rows}
-                        state={activeLivePlayersTableState}
-                        onRowClick={handlePlayerRowClick}
-                        onChange={(patch) =>
-                          setLivePlayersTableState((prev) => ({
-                            ...prev,
-                            [activeLiveSide]: {
-                              ...prev[activeLiveSide],
-                              ...patch
-                            }
-                          }))
-                        }
-                        getRowStyle={(row) => {
-                          try {
-                            const playerName = row["Player"];
-                            if (!playerName) return {};
-
-                            if (performanceMetric === "PIE") {
-                              const pieString = row["PIE"] || "0%";
-                              const pieValue = parseFloat(pieString) / 100;
-
-                              if (pieValue >= 0.12) {
-                                return { backgroundColor: "rgba(0, 255, 0, 0.3)" };
-                              } else if (pieValue <= 0.05 && pieValue > 0) {
-                                return { backgroundColor: "rgba(255, 0, 0, 0.2)" };
-                              }
-                              else if (pieValue < 0) {
-                                return { backgroundColor: "rgba(255, 0, 0, 0.2)" };
-                              }
-                              return {};
-                            }
-                            const seasonTeamRows = seasonPlayers[activeLiveSide].rows;
-                            const seasonPlayer = seasonTeamRows.find((p) => {
-                              const seasonName = p["Player"];
-                              if (!seasonName) return false;
-
-                              if (seasonName.includes(",")) {
-                                  const [lastName, firstName] = seasonName.split(",").map(s => s.trim());
-                                  const flippedName = `${firstName} ${lastName}`;
-                                  return flippedName === playerName;
-                              }
-
-                              return seasonName === playerName;
-                            });
-
-                            const statMapping = {
-                              "PTS": "PPG",
-                              "REB": "RPG",
-                              "AST": "APG"
-                            };
-
-                            const seasonStatsKey = statMapping[performanceMetric];
-
-                            if (seasonPlayer && seasonPlayer[seasonStatsKey]) {
-                              const liveValue = parseFloat(row[performanceMetric]) || 0;
-                              const liveMin = parseFloat(row["MIN"]) || 0;
-                              const seasonAvgValue = parseFloat(seasonPlayer[seasonStatsKey]);
-
-                              const seasonTotalMin = parseFloat(seasonPlayer["MIN"]) || 0;
-                              const gpString = seasonPlayer["GP-GS"] || "";
-                              const gp = parseFloat(gpString.split("-")[0]) || 0;
-                              const seasonMpg = gp > 0 ? seasonTotalMin / gp : 0;
-
-                              if (liveMin > 0 && seasonMpg > 0) {
-                                const projectedVal = (liveValue / liveMin) * seasonMpg;
-
-                                let threshold = .25;
-                                if (performanceMetric === "REB") {
-                                  threshold = .35;
-                                } else if (performanceMetric === "AST") {
-                                  threshold = .35;
-                                }
-
-                                const color = getPerformanceColor(
-                                  projectedVal,
-                                  seasonAvgValue,
-                                  threshold,
-                                );
-
-                                if (color) {
-                                  return { backgroundColor: color };
-                                }
-                              }
-                            }
-                          } catch (error) {
-                            console.error("Cant change color", error);
-                          }
-
-                          return {};
-                        }}
-                      />
-                    </>                 
-                  ) : gameDataSubtab === "play-by-play" ? (
-                    <>
-                      <div className="table-status">
-                        {pbpError ? (
-                          <span className="error"> {pbpError}</span>
-                        ) : null}
-                        {!pbpLoading && !pbpError && pbpData.rows.length ? (
-                          <span> Rows: {pbpData.rows.length}</span>
-                        ) : null}
-                        {!pbpLoading && !pbpError && pbpData.source_url ? (
-                          <span>
-                            {" "}
-                            Source:{" "}
-                            <a
-                              href={pbpData.source_url}
-                              target="_blank"
-                              rel="noreferrer"
+                          <div className="table-status">
+                            {liveStatsLoading ? <span> Loading live stats...</span> : null}
+                            {liveStatsError ? <span className="error"> {liveStatsError}</span> : null}
+                            {!pbpData.rows.length ? (
+                              <span> Live stats are derived from play-by-play data. Click Update above to fetch PBP first.</span>
+                            ) : (
+                              <span> Derived from play-by-play ({pbpData.rows.length} plays).</span>
+                            )}
+                          </div>
+                          <div className="table-status">
+                            <span>
+                              {activeLiveSide === "ucsb" ? "UCSB" : "Opponent"} live player rows: {livePlayerRows}
+                            </span>
+                            <span style={{ marginLeft: "20px", marginRight: "10px" }}>
+                              Highlight Performance:
+                            </span>
+                            <select
+                              value={performanceMetric}
+                              onChange={(e) => setPerformanceMetric(e.target.value)}
+                              style={{ padding: "4px", borderRadius: "4px" }}
                             >
-                              ESPN Core API
-                            </a>
-                          </span>
-                        ) : null}
-                      </div>
-                      <DataTable
-                        columns={pbpData.columns}
-                        rows={pbpData.rows}
-                        state={pbpTableState}
-                        onChange={(patch) =>
-                          setPbpTableState((prev) => ({ ...prev, ...patch }))
-                        }
-                        extraControls={pbpAdvancedControls}
-                      />
+                              <option value="PTS">Points (PTS)</option>
+                              <option value="REB">Rebounds (REB)</option>
+                              <option value="AST">Assists (AST)</option>
+                              <option value="PIE">Player Impact(PIE)</option>
+                            </select>
+                          </div>
+                          <DataTable
+                            columns={livePlayersData.columns}
+                            rows={livePlayersData.rows}
+                            state={activeLivePlayersTableState}
+                            onRowClick={handlePlayerRowClick}
+                            onChange={(patch) =>
+                              setLivePlayersTableState((prev) => ({
+                                ...prev,
+                                [activeLiveSide]: {
+                                  ...prev[activeLiveSide],
+                                  ...patch
+                                }
+                              }))
+                            }
+                            getRowStyle={(row) => {
+                              try {
+                                const playerName = row["Player"];
+                                if (!playerName) return {};
+
+                                if (performanceMetric === "PIE") {
+                                  const pieString = row["PIE"] || "0%";
+                                  const pieValue = parseFloat(pieString) / 100;
+
+                                  if (pieValue >= 0.12) {
+                                    return { backgroundColor: "rgba(0, 255, 0, 0.3)" };
+                                  } else if (pieValue <= 0.05 && pieValue > 0) {
+                                    return { backgroundColor: "rgba(255, 0, 0, 0.2)" };
+                                  }
+                                  else if (pieValue < 0) {
+                                    return { backgroundColor: "rgba(255, 0, 0, 0.2)" };
+                                  }
+                                  return {};
+                                }
+                                const seasonTeamRows = seasonPlayers[activeLiveSide].rows;
+                                const seasonPlayer = seasonTeamRows.find((p) => {
+                                  const seasonName = p["Player"];
+                                  if (!seasonName) return false;
+
+                                  if (seasonName.includes(",")) {
+                                    const [lastName, firstName] = seasonName.split(",").map(s => s.trim());
+                                    const flippedName = `${firstName} ${lastName}`;
+                                    return flippedName === playerName;
+                                  }
+
+                                  return seasonName === playerName;
+                                });
+
+                                const statMapping = {
+                                  "PTS": "PPG",
+                                  "REB": "RPG",
+                                  "AST": "APG"
+                                };
+
+                                const seasonStatsKey = statMapping[performanceMetric];
+
+                                if (seasonPlayer && seasonPlayer[seasonStatsKey]) {
+                                  const liveValue = parseFloat(row[performanceMetric]) || 0;
+                                  const liveMin = parseFloat(row["MIN"]) || 0;
+                                  const seasonAvgValue = parseFloat(seasonPlayer[seasonStatsKey]);
+
+                                  const seasonTotalMin = parseFloat(seasonPlayer["MIN"]) || 0;
+                                  const gpString = seasonPlayer["GP-GS"] || "";
+                                  const gp = parseFloat(gpString.split("-")[0]) || 0;
+                                  const seasonMpg = gp > 0 ? seasonTotalMin / gp : 0;
+
+                                  if (liveMin > 0 && seasonMpg > 0) {
+                                    const projectedVal = (liveValue / liveMin) * seasonMpg;
+
+                                    let threshold = .25;
+                                    if (performanceMetric === "REB") {
+                                      threshold = .35;
+                                    } else if (performanceMetric === "AST") {
+                                      threshold = .35;
+                                    }
+
+                                    const color = getPerformanceColor(
+                                      projectedVal,
+                                      seasonAvgValue,
+                                      threshold,
+                                    );
+
+                                    if (color) {
+                                      return { backgroundColor: color };
+                                    }
+                                  }
+                                }
+                              } catch (error) {
+                                console.error("Cant change color", error);
+                              }
+
+                              return {};
+                            }}
+                          />
+                        </>
+                      ) : gameDataSubtab === "play-by-play" ? (
+                        <>
+                          <div className="table-status">
+                            {pbpError ? (
+                              <span className="error"> {pbpError}</span>
+                            ) : null}
+                            {!pbpLoading && !pbpError && pbpData.rows.length ? (
+                              <span> Rows: {pbpData.rows.length}</span>
+                            ) : null}
+                            {!pbpLoading && !pbpError && pbpData.source_url ? (
+                              <span>
+                                {" "}
+                                Source:{" "}
+                                <a
+                                  href={pbpData.source_url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                >
+                                  ESPN Core API
+                                </a>
+                              </span>
+                            ) : null}
+                          </div>
+                          <DataTable
+                            columns={pbpData.columns}
+                            rows={pbpData.rows}
+                            state={pbpTableState}
+                            onChange={(patch) =>
+                              setPbpTableState((prev) => ({ ...prev, ...patch }))
+                            }
+                            extraControls={pbpAdvancedControls}
+                          />
+                        </>
+                      ) : gameDataSubtab === "season-data" ? (
+                        <>
+                          <div className="team-line opponent-line">
+                            {espnTeams.length > 0 ? (
+                              <select value={opponentTeamId} onChange={(e) => setOpponentTeamId(e.target.value)}>
+                                <option value="">Select ESPN team</option>
+                                {espnTeams
+                                  .filter((team) => {
+                                    const id = normalizeTeamIdInput(team.team_id);
+                                    return id !== UCSB_TEAM_ID && BIG_WEST_TEAM_IDS.has(id);
+                                  })
+                                  .map((team) => (
+                                    <option key={team.team_id} value={team.team_id}>
+                                      {team.school_name} ({team.team_id})
+                                    </option>
+                                  ))}
+                              </select>
+                            ) : (
+                              <input
+                                type="text"
+                                value={opponentTeamId}
+                                placeholder="Team ID (e.g., ucr)"
+                                onChange={(event) => setOpponentTeamId(event.target.value)}
+                              />
+                            )}
+                          </div>
+
+                          <div className="tab-tree">
+                            <div className="branch">
+                              <h3>Team View</h3>
+                              <div className="leaf-list">
+                                <button
+                                  type="button"
+                                  className={`leaf ${activeSeasonSide === "ucsb" ? "active" : ""}`}
+                                  onClick={() => setActiveSeasonSide("ucsb")}
+                                >
+                                  UCSB
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`leaf ${activeSeasonSide === "opponent" ? "active" : ""}`}
+                                  onClick={() => setActiveSeasonSide("opponent")}
+                                >
+                                  Opponent
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="table-status">
+                            {activeSeasonPlayersLoading ? (
+                              <span> Loading season players...</span>
+                            ) : null}
+                            {activeSeasonPlayersError ? (
+                              <span className="error"> {activeSeasonPlayersError}</span>
+                            ) : null}
+                            {teamsLoading ? <span> Loading ESPN teams...</span> : null}
+                            {teamsError ? (
+                              <span className="error"> {teamsError}</span>
+                            ) : null}
+                            {activeSeasonSide === "opponent" &&
+                              !normalizedOpponentTeamId ? (
+                              <span> Select an opponent team to view opponent data.</span>
+                            ) : null}
+                          </div>
+
+                          <DataTable
+                            columns={activeSeasonPlayers.columns}
+                            rows={activeSeasonPlayers.rows}
+                            state={activeSeasonPlayersTableState}
+                            onChange={(patch) =>
+                              setSeasonPlayersTableState((prev) => ({
+                                ...prev,
+                                [activeSeasonSide]: {
+                                  ...prev[activeSeasonSide],
+                                  ...patch,
+                                },
+                              }))
+                            }
+                          />
+                        </>
+                      ) : null}
                     </>
-                  ) : gameDataSubtab === "season-data" ? (
-                      <>
-                  <div className="team-line opponent-line">
-                    {espnTeams.length > 0 ? (
-                      <select value={opponentTeamId} onChange={(e) => setOpponentTeamId(e.target.value)}>
-                        <option value="">Select ESPN team</option>
-                        {espnTeams
-                          .filter((team) => {
-                             const id = normalizeTeamIdInput(team.team_id);
-                             return id !== UCSB_TEAM_ID && BIG_WEST_TEAM_IDS.has(id);
-                          })
-                          .map((team) => (
-                            <option key={team.team_id} value={team.team_id}>
-                              {team.school_name} ({team.team_id})
-                            </option>
-                          ))}
-                      </select>
-                    ) : (
-                      <input
-                        type="text"
-                        value={opponentTeamId}
-                        placeholder="Team ID (e.g., ucr)"
-                        onChange={(event) => setOpponentTeamId(event.target.value)}
-                      />
-                    )}
-                  </div>
-
-                  <div className="tab-tree">
-                    <div className="branch">
-                      <h3>Team View</h3>
-                      <div className="leaf-list">
-                        <button
-                          type="button"
-                          className={`leaf ${activeSeasonSide === "ucsb" ? "active" : ""}`}
-                          onClick={() => setActiveSeasonSide("ucsb")}
-                        >
-                          UCSB
-                        </button>
-                        <button
-                          type="button"
-                          className={`leaf ${activeSeasonSide === "opponent" ? "active" : ""}`}
-                          onClick={() => setActiveSeasonSide("opponent")}
-                        >
-                          Opponent
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="table-status">
-                    {activeSeasonPlayersLoading ? (
-                      <span> Loading season players...</span>
-                    ) : null}
-                    {activeSeasonPlayersError ? (
-                      <span className="error"> {activeSeasonPlayersError}</span>
-                    ) : null}
-                    {teamsLoading ? <span> Loading ESPN teams...</span> : null}
-                    {teamsError ? (
-                      <span className="error"> {teamsError}</span>
-                    ) : null}
-                    {activeSeasonSide === "opponent" &&
-                    !normalizedOpponentTeamId ? (
-                      <span> Select an opponent team to view opponent data.</span>
-                    ) : null}
-                  </div>
-
-                  <DataTable
-                    columns={activeSeasonPlayers.columns}
-                    rows={activeSeasonPlayers.rows}
-                    state={activeSeasonPlayersTableState}
-                    onChange={(patch) =>
-                      setSeasonPlayersTableState((prev) => ({
-                        ...prev,
-                        [activeSeasonSide]: {
-                          ...prev[activeSeasonSide],
-                          ...patch,
-                        },
-                      }))
-                    }
-                  />
-                </>
-                ) : null}
-                </>
-              )}
-            </div>
-            </Panel>
-          ) : null}
+                  )}
+                </div>
+              </Panel>
+            ) : null}
 
             {showTrendsHandle ? (
               <PanelResizeHandle
@@ -3322,154 +3483,154 @@ export default function App() {
                 onCollapse={() => setTrendsCollapsed(true)}
                 onExpand={() => setTrendsCollapsed(false)}
               >
-            <div className="panel trends-panel">
-              {trendsCollapsed ? (
-                <div
-                  className="panel-collapsed"
-                  onClick={() => trendsPanelRef.current?.expand()}
-                >
-                  <span>Trends</span>
-                </div>
-              ) : (
-                <>
-                  <div className="section-header">
-                    <h2>Trends</h2>
-                    <span>Teams and players trending now</span>
-                    <CollapseButton
-                      panelRef={trendsPanelRef}
-                      collapsed={trendsCollapsed}
-                      onCollapsedChange={setTrendsCollapsed}
-                      title="Trends"
-                    />
-                  </div>
-                  <div className="table-status">
-                    <button
-                      type="button"
-                      onClick={updateTrends}
-                      disabled={trendsUpdating}
+                <div className="panel trends-panel">
+                  {trendsCollapsed ? (
+                    <div
+                      className="panel-collapsed"
+                      onClick={() => trendsPanelRef.current?.expand()}
                     >
-                      {trendsUpdating ? "Updating..." : "Update Trends"}
-                    </button>
-                    {trendsUpdatedAt ? (
-                      <span>
-                        {" "}
-                        Updated {new Date(trendsUpdatedAt).toLocaleString()}
-                      </span>
-                    ) : (
-                      <span> No trends snapshot yet.</span>
-                    )}
-                    {trendsError ? (
-                      <span className="error"> {trendsError}</span>
-                    ) : null}
-                  </div>
-                  <div className="table-status trends-threshold-controls">
-                    <label>
-                      Over threshold multiplier
-                      <input
-                        type="range"
-                        min="1"
-                        max="5"
-                        step="0.05"
-                        value={trendsOverMultiplier}
-                        onChange={(event) =>
-                          setTrendsOverMultiplier(Number(event.target.value))
-                        }
-                      />
-                      <span>x{trendsOverMultiplier.toFixed(2)}</span>
-                    </label>
-                    <label>
-                      Under threshold multiplier
-                      <input
-                        type="range"
-                        min="0.1"
-                        max="1"
-                        step="0.05"
-                        value={trendsUnderMultiplier}
-                        onChange={(event) =>
-                          setTrendsUnderMultiplier(Number(event.target.value))
-                        }
-                      />
-                      <span>x{trendsUnderMultiplier.toFixed(2)}</span>
-                    </label>
-                  </div>
-                  <div className="table-status">
-                    <span>Checkpoint: {trendsCheckpointLabel}</span>
-                  </div>
-                  <div className="table-status">
-                    <span>
-                      Tracked teams: {Object.keys(trendsTimelines).length}
-                    </span>
-                  </div>
-                  <div className="table-status">
-                    {trendsMessages.length ? (
-                      <span>Messages: {trendsMessages.length}</span>
-                    ) : (
-                      <span>
-                        No over/under messages at the current checkpoint.
-                      </span>
-                    )}
-                  </div>
-                  <div className="table-scroll">
-                    {trendsMessages.length ? (
-                      <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                        {trendsMessages.map((message, index) => (
-                          <li
-                            key={`trend_message_${index}`}
-                            style={{
-                              backgroundColor:
-                                message.tone === "good"
-                                  ? "rgba(34, 197, 94, 0.18)"
-                                  : "rgba(239, 68, 68, 0.18)",
-                              border:
-                                message.tone === "good"
-                                  ? "1px solid rgba(34, 197, 94, 0.5)"
-                                  : "1px solid rgba(239, 68, 68, 0.5)",
-                              borderRadius: "0",
-                              padding: "8px 10px",
-                              marginBottom: "0",
-                              fontSize: "12px",
-                            }}
-                          >
-                            {message.text}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : null}
-                  </div>
-                  <div className="table-scroll">
-                    {trendsPlayerMessages.length ? (
-                      <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
-                        {trendsPlayerMessages.map((message, index) => (
-                          <li
-                            key={`trend_player_message_${index}`}
-                            style={{
-                              backgroundColor:
-                                message.tone === "good"
-                                  ? "rgba(34, 197, 94, 0.18)"
-                                  : "rgba(239, 68, 68, 0.18)",
-                              border:
-                                message.tone === "good"
-                                  ? "1px solid rgba(34, 197, 94, 0.5)"
-                                  : "1px solid rgba(239, 68, 68, 0.5)",
-                              borderRadius: "0",
-                              padding: "8px 10px",
-                              marginBottom: "0",
-                              fontSize: "12px",
-                            }}
-                          >
-                            {message.text}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <span>No individual trends at the current checkpoint.</span>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-            </Panel>
-          ) : null}
+                      <span>Trends</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="section-header">
+                        <h2>Trends</h2>
+                        <span>Teams and players trending now</span>
+                        <CollapseButton
+                          panelRef={trendsPanelRef}
+                          collapsed={trendsCollapsed}
+                          onCollapsedChange={setTrendsCollapsed}
+                          title="Trends"
+                        />
+                      </div>
+                      <div className="table-status">
+                        <button
+                          type="button"
+                          onClick={updateTrends}
+                          disabled={trendsUpdating}
+                        >
+                          {trendsUpdating ? "Updating..." : "Update Trends"}
+                        </button>
+                        {trendsUpdatedAt ? (
+                          <span>
+                            {" "}
+                            Updated {new Date(trendsUpdatedAt).toLocaleString()}
+                          </span>
+                        ) : (
+                          <span> No trends snapshot yet.</span>
+                        )}
+                        {trendsError ? (
+                          <span className="error"> {trendsError}</span>
+                        ) : null}
+                      </div>
+                      <div className="table-status trends-threshold-controls">
+                        <label>
+                          Over threshold multiplier
+                          <input
+                            type="range"
+                            min="1"
+                            max="5"
+                            step="0.05"
+                            value={trendsOverMultiplier}
+                            onChange={(event) =>
+                              setTrendsOverMultiplier(Number(event.target.value))
+                            }
+                          />
+                          <span>x{trendsOverMultiplier.toFixed(2)}</span>
+                        </label>
+                        <label>
+                          Under threshold multiplier
+                          <input
+                            type="range"
+                            min="0.1"
+                            max="1"
+                            step="0.05"
+                            value={trendsUnderMultiplier}
+                            onChange={(event) =>
+                              setTrendsUnderMultiplier(Number(event.target.value))
+                            }
+                          />
+                          <span>x{trendsUnderMultiplier.toFixed(2)}</span>
+                        </label>
+                      </div>
+                      <div className="table-status">
+                        <span>Checkpoint: {trendsCheckpointLabel}</span>
+                      </div>
+                      <div className="table-status">
+                        <span>
+                          Tracked teams: {Object.keys(trendsTimelines).length}
+                        </span>
+                      </div>
+                      <div className="table-status">
+                        {trendsMessages.length ? (
+                          <span>Messages: {trendsMessages.length}</span>
+                        ) : (
+                          <span>
+                            No over/under messages at the current checkpoint.
+                          </span>
+                        )}
+                      </div>
+                      <div className="table-scroll">
+                        {trendsMessages.length ? (
+                          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                            {trendsMessages.map((message, index) => (
+                              <li
+                                key={`trend_message_${index}`}
+                                style={{
+                                  backgroundColor:
+                                    message.tone === "good"
+                                      ? "rgba(34, 197, 94, 0.18)"
+                                      : "rgba(239, 68, 68, 0.18)",
+                                  border:
+                                    message.tone === "good"
+                                      ? "1px solid rgba(34, 197, 94, 0.5)"
+                                      : "1px solid rgba(239, 68, 68, 0.5)",
+                                  borderRadius: "0",
+                                  padding: "8px 10px",
+                                  marginBottom: "0",
+                                  fontSize: "12px",
+                                }}
+                              >
+                                {message.text}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </div>
+                      <div className="table-scroll">
+                        {trendsPlayerMessages.length ? (
+                          <ul style={{ listStyle: "none", padding: 0, margin: 0 }}>
+                            {trendsPlayerMessages.map((message, index) => (
+                              <li
+                                key={`trend_player_message_${index}`}
+                                style={{
+                                  backgroundColor:
+                                    message.tone === "good"
+                                      ? "rgba(34, 197, 94, 0.18)"
+                                      : "rgba(239, 68, 68, 0.18)",
+                                  border:
+                                    message.tone === "good"
+                                      ? "1px solid rgba(34, 197, 94, 0.5)"
+                                      : "1px solid rgba(239, 68, 68, 0.5)",
+                                  borderRadius: "0",
+                                  padding: "8px 10px",
+                                  marginBottom: "0",
+                                  fontSize: "12px",
+                                }}
+                              >
+                                {message.text}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <span>No individual trends at the current checkpoint.</span>
+                        )}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </Panel>
+            ) : null}
 
             {showSharedNotesHandle ? (
               <PanelResizeHandle
@@ -3621,9 +3782,8 @@ export default function App() {
                         {section.items.map((message, index) => (
                           <li
                             key={`${section.key}_${index}`}
-                            className={`basic-trends-item ${
-                              section.tone === "good" ? "positive" : "negative"
-                            }`}
+                            className={`basic-trends-item ${section.tone === "good" ? "positive" : "negative"
+                              }`}
                           >
                             {message.text}
                           </li>
@@ -3648,188 +3808,278 @@ export default function App() {
           </Panel>
         </PanelGroup>
       ) : isDataVizView ? (
-        <PanelGroup direction="horizontal" className="data-viz-view-shell" key="data-viz-view">
-          <Panel defaultSize={68} minSize={40}>
-             <div className="panel player-performance-panel">
-                <div className="section-header">
-                    <h2>Player Performance</h2>
-                </div>
+        <div className="data-viz-view-shell" key="data-viz-view" style={{ display: "flex", flexDirection: "column", gap: "16px", height: "100%", overflowY: "auto" }}>
+          <PanelGroup direction="horizontal" style={{ minHeight: 0, flex: "0 0 auto", height: "600px" }}>
+            <Panel defaultSize={68} minSize={40}>
+            <div className="panel player-performance-panel">
+              <div className="section-header">
+                <h2>Player Performance</h2>
+              </div>
+
+              <div
+                className="panel story-panel"
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  height: "100%",
+                }}
+              >
 
                 <div
-                      className="panel story-panel"
-                      style={{
-                        display: "flex",
-                        flexDirection: "column",
-                        height: "100%",
-                      }}
-                    >
-
-                          <div
-                            style={{
-                              padding: "15px",
-                              borderBottom: "1px solid #eee",
-                            }}
-                          >
-                            <label
-                              style={{
-                                fontSize: "12px",
-                                fontWeight: "bold",
-                                display: "block",
-                                marginBottom: "5px",
-                              }}
-                            >
-                              SELECT PLAYER
-                            </label>
-                            <select
-                              style={{ width: "100%", padding: "8px" }}
-                              value={selectedStoryPlayerOneId}
-                              onChange={(e) =>
-                                setSelectedStoryPlayerOneId(e.target.value)
-                              }
-                            >
-                              <option value="">Choose a player...</option>
-                              {allPlayersList.map((player) => (
-                                <option key={player.id} value={player.id}>
-                                  {player.name} ({resolveTeamName(player.team_id)})
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-
-                          <div style={{ flex: 1, overflowY: "auto" }}>
-                            {(() => {
-                              const selectedPlayer = allPlayersList.find(
-                                (p) => p.id === selectedStoryPlayerOneId,
-                              );
-                              return (
-                                <PlayerPerformanceStory
-                                  playerTimeline={buildCustomPlayerTimeline(
-                                    pbpData.rows,
-                                    selectedStoryPlayerOneId,
-                                    selectedPlayer?.name,
-                                    selectedPlayer?.team_id,
-                                  )}
-                                  teamName={resolveTeamName(
-                                    selectedPlayer?.team_id,
-                                  )}
-                                />
-                              );
-                            })()};
-                          </div>
-                    </div>
+                  style={{
+                    padding: "15px",
+                    borderBottom: "1px solid #eee",
+                  }}
+                >
+                  <label
+                    style={{
+                      fontSize: "12px",
+                      fontWeight: "bold",
+                      display: "block",
+                      marginBottom: "5px",
+                    }}
+                  >
+                    SELECT PLAYER
+                  </label>
+                  <select
+                    style={{ width: "100%", padding: "8px" }}
+                    value={selectedStoryPlayerOneId}
+                    onChange={(e) =>
+                      setSelectedStoryPlayerOneId(e.target.value)
+                    }
+                  >
+                    <option value="">Choose a player...</option>
+                    {allPlayersList.map((player) => (
+                      <option key={player.id} value={player.id}>
+                        {player.name} ({resolveTeamName(player.team_id)})
+                      </option>
+                    ))}
+                  </select>
                 </div>
+
+                <div style={{ flex: 1, overflowY: "auto" }}>
+                  {(() => {
+                    const selectedPlayer = allPlayersList.find(
+                      (p) => p.id === selectedStoryPlayerOneId,
+                    );
+                    return (
+                      <PlayerPerformanceStory
+                        playerTimeline={buildCustomPlayerTimeline(
+                          pbpData.rows,
+                          selectedStoryPlayerOneId,
+                          selectedPlayer?.name,
+                          selectedPlayer?.team_id,
+                        )}
+                        teamName={resolveTeamName(
+                          selectedPlayer?.team_id,
+                        )}
+                      />
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
           </Panel>
           <Panel defaultSize={68} minSize={40}>
             <div style={{ flex: 1, overflowY: "auto" }}>
-                          <TeamPieComparison
-                            liveStats={liveStats[`${activeLivePrefix}_players`]}
-                            teamName={
-                              activeLiveSide === "ucsb"
-                                ? ucsbDisplayName
-                                : opponentDisplayName
-                            }
-                          />
-                        </div>
+              <TeamPieComparison
+                liveStats={liveStats[`${activeLivePrefix}_players`]}
+                teamName={
+                  activeLiveSide === "ucsb"
+                    ? ucsbDisplayName
+                    : opponentDisplayName
+                }
+              />
+            </div>
           </Panel>
           <Panel defaultSize={68} minSize={40}>
-             <div className="panel player-war-panel">
-                 <div className="section-header">
-                     <h2>Player Wars </h2>
-                 </div>
-                          <div
-                            style={{
-                              padding: "15px",
-                              borderBottom: "1px solid #eee",
-                            }}
-                          >
-                            <label
-                              style={{
-                                fontSize: "12px",
-                                fontWeight: "bold",
-                                display: "block",
-                                marginBottom: "5px",
-                              }}
-                            >
-                              SELECT UCSB PLAYER
-                            </label>
-                            <select
-                              style={{ width: "100%", padding: "8px" }}
-                              value={selectedStoryPlayerOneId}
-                              onChange={(e) =>
-                                setSelectedStoryPlayerOneId(e.target.value)
-                              }
-                            >
-                              <option value="">Choose a player...</option>
-                              {allPlayersList.map((player) => (
-                                <option key={player.id} value={player.id}>
-                                  {player.name} ({resolveTeamName(player.team_id)})
-                                </option>
-                              ))}
-                            </select>
+            <div className="panel player-war-panel">
+              <div className="section-header">
+                <h2>Player Wars </h2>
+              </div>
+              <div
+                style={{
+                  padding: "15px",
+                  borderBottom: "1px solid #eee",
+                }}
+              >
+                <label
+                  style={{
+                    fontSize: "12px",
+                    fontWeight: "bold",
+                    display: "block",
+                    marginBottom: "5px",
+                  }}
+                >
+                  SELECT UCSB PLAYER
+                </label>
+                <select
+                  style={{ width: "100%", padding: "8px" }}
+                  value={selectedStoryPlayerOneId}
+                  onChange={(e) =>
+                    setSelectedStoryPlayerOneId(e.target.value)
+                  }
+                >
+                  <option value="">Choose a player...</option>
+                  {allPlayersList.map((player) => (
+                    <option key={player.id} value={player.id}>
+                      {player.name} ({resolveTeamName(player.team_id)})
+                    </option>
+                  ))}
+                </select>
 
-                            <label
-                              style={{
-                                fontSize: "12px",
-                                fontWeight: "bold",
-                                display: "block",
-                                marginBottom: "5px",
-                              }}
-                            >
-                              SELECT OPPONENT PLAYER
-                            </label>
-                            <select
-                              style={{ width: "100%", padding: "8px" }}
-                              value={selectedStoryPlayerTwoId}
-                              onChange={(e) =>
-                                setSelectedStoryPlayerTwoId(e.target.value)
-                              }
-                            >
-                              <option value="">Choose a player...</option>
-                              {allPlayersList.map((player) => (
-                                <option key={player.id} value={player.id}>
-                                  {player.name} ({resolveTeamName(player.team_id)})
-                                </option>
-                              ))}
-                            </select>
-                          </div>
+                <label
+                  style={{
+                    fontSize: "12px",
+                    fontWeight: "bold",
+                    display: "block",
+                    marginBottom: "5px",
+                  }}
+                >
+                  SELECT OPPONENT PLAYER
+                </label>
+                <select
+                  style={{ width: "100%", padding: "8px" }}
+                  value={selectedStoryPlayerTwoId}
+                  onChange={(e) =>
+                    setSelectedStoryPlayerTwoId(e.target.value)
+                  }
+                >
+                  <option value="">Choose a player...</option>
+                  {allPlayersList.map((player) => (
+                    <option key={player.id} value={player.id}>
+                      {player.name} ({resolveTeamName(player.team_id)})
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-                          <div style={{ flex: 1, overflowY: "auto" }}>
-                            {(() => {
-                              const playerOne = allPlayersList.find(
-                                (p) => p.id === selectedStoryPlayerOneId,
-                              );
-                              const playerTwo = allPlayersList.find(
-                                (p) => p.id === selectedStoryPlayerTwoId,
-                              );
-                              const playerOneTimeline= buildCustomPlayerTimeline(
-                                    pbpData.rows,
-                                    selectedStoryPlayerOneId,
-                                    playerOne?.name,
-                                    playerOne?.team_id,
-                                  );
-                              const playerTwoTimeline= buildCustomPlayerTimeline(
-                                    pbpData.rows,
-                                    selectedStoryPlayerTwoId,
-                                    playerTwo?.name,
-                                    playerTwo?.team_id,
-                                  );
-                              const comparisonTimeline= buildWarTimeline(
-                                    playerOneTimeline,
-                                    playerTwoTimeline,
-                                    playerOne?.name,
-                                    playerTwo?.name,
-                                  );
-                              return (
-                                <PlayerPerformanceStory
-                                  playerTimeline={comparisonTimeline}
-                                  teamName="Positive = UCSB, Negative = Opponent"
-                                />
-                              );
-                            })()}
-                          </div>
-                        </div>
+              <div style={{ flex: 1, overflowY: "auto" }}>
+                {(() => {
+                  const playerOne = allPlayersList.find(
+                    (p) => p.id === selectedStoryPlayerOneId,
+                  );
+                  const playerTwo = allPlayersList.find(
+                    (p) => p.id === selectedStoryPlayerTwoId,
+                  );
+                  const playerOneTimeline = buildCustomPlayerTimeline(
+                    pbpData.rows,
+                    selectedStoryPlayerOneId,
+                    playerOne?.name,
+                    playerOne?.team_id,
+                  );
+                  const playerTwoTimeline = buildCustomPlayerTimeline(
+                    pbpData.rows,
+                    selectedStoryPlayerTwoId,
+                    playerTwo?.name,
+                    playerTwo?.team_id,
+                  );
+                  const comparisonTimeline = buildWarTimeline(
+                    playerOneTimeline,
+                    playerTwoTimeline,
+                    playerOne?.name,
+                    playerTwo?.name,
+                  );
+                  return (
+                    <PlayerPerformanceStory
+                      playerTimeline={comparisonTimeline}
+                      teamName="Positive = UCSB, Negative = Opponent"
+                    />
+                  );
+                })()}
+              </div>
+            </div>
           </Panel>
         </PanelGroup>
+
+        {/* Shot Heatmap — full width below */}
+        <div className="panel" style={{ flexShrink: 0 }}>
+          <div className="section-header">
+            <h2>Shot Heatmap</h2>
+          </div>
+          <div style={{ maxHeight: "700px", overflowY: "auto" }}>
+            <Heatmap gameId={pbpGameId} />
+          </div>
+        </div>
+
+        {/* Score Differential Timeline — full width below heatmap */}
+        <div className="panel" style={{ flexShrink: 0 }}>
+          <div className="section-header">
+            <h2>Score Differential Timeline</h2>
+            <span className="muted">Lead/deficit across every scoring play</span>
+          </div>
+          {pbpGameOptions.length > 0 && (
+            <div style={{ display: "flex", gap: 6, padding: "6px 16px 0", flexWrap: "wrap" }}>
+              {pbpGameOptions.map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  className={scoreDiffGameId === opt.value ? "active" : "neutral"}
+                  style={{ fontSize: "0.82rem", padding: "3px 10px" }}
+                  onClick={() => setScoreDiffGameId(opt.value)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
+          <ScoreDifferentialChart
+            rows={scoreDiffRows ?? pbpData.rows}
+            ucsbTeamId={UCSB_TEAM_ID}
+            ucsbName={ucsbDisplayName}
+            opponentName={(() => {
+              const opt = pbpGameOptions.find((o) => o.value === scoreDiffGameId);
+              if (opt && opt.label) {
+                const ucsbNames = ["uc santa barbara", "ucsb"];
+                
+                const atParts = opt.label.split(/\s+at\s+|\s*@\s*/i);
+                if (atParts.length === 2) {
+                  const isAwayUcsb = ucsbNames.some(n => atParts[0].toLowerCase().includes(n));
+                  return isAwayUcsb ? atParts[1].trim() : atParts[0].trim();
+                }
+                
+                const vsParts = opt.label.split(/\s+vs\.?\s*/i);
+                if (vsParts.length === 2) {
+                  const isAwayUcsb = ucsbNames.some(n => vsParts[0].toLowerCase().includes(n));
+                  return isAwayUcsb ? vsParts[1].trim() : vsParts[0].trim();
+                }
+
+                let fallbackName = opt.label
+                  .replace(/uc santa barbara/ig, "")
+                  .replace(/ucsb/ig, "")
+                  .replace(/\s+at\s+|\s*@\s*/ig, "")
+                  .replace(/\s+vs\.?\s*/ig, "")
+                  .trim();
+                if (fallbackName) return fallbackName;
+              }
+
+              if (opt) {
+                const oppId = opt.opponentTeamId;
+                const normalizedOppId = oppId ? normalizeTeamIdInput(oppId) : null;
+                if (normalizedOppId && teamNameById[normalizedOppId]) {
+                  return teamNameById[normalizedOppId];
+                }
+              }
+
+              const rowsToScan = scoreDiffRows ?? pbpData.rows ?? [];
+              let oppIdFromRows = null;
+              for (const r of rowsToScan) {
+                const rId = String(r.team_id || "").trim().toLowerCase();
+                const uId = String(UCSB_TEAM_ID).trim().toLowerCase();
+                if (rId && rId !== uId && rId !== "ucsb" && rId !== "2540") {
+                  oppIdFromRows = rId;
+                  break;
+                }
+              }
+              const normOppRows = oppIdFromRows ? normalizeTeamIdInput(oppIdFromRows) : null;
+              if (normOppRows && teamNameById[normOppRows]) {
+                return teamNameById[normOppRows];
+              }
+              return opponentDisplayName;
+            })()}
+          />
+        </div>
+        </div>
 
       ) : null}
 
@@ -3840,13 +4090,13 @@ export default function App() {
           alignItems: 'center', justifyContent: 'center', zIndex: 9999
         }}>
           <div style={{
-            backgroundColor: 'var(--panel-strong)', padding: '20px', borderRadius: '8px', 
+            backgroundColor: 'var(--panel-strong)', padding: '20px', borderRadius: '8px',
             width: '500px', maxWidth: '90%', color: 'var(--ink)', boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', borderBottom: '1px solid var(--border)', paddingBottom: '10px' }}>
               <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800 }}>{selectedModalPlayer} - Last 5 Games</h3>
-              <button 
-                onClick={closePlayerModal} 
+              <button
+                onClick={closePlayerModal}
                 style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontSize: '1.2rem', color: 'var(--muted)', fontWeight: 'bold' }}
               >
                 X
@@ -3858,9 +4108,9 @@ export default function App() {
                 Loading game log...
               </div>
             ) : recentGames.length > 0 ? (
-              <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
+              <table className="last-5-table" style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
                 <thead>
-                  <tr style={{ borderBottom: '2px solid var(--border)', color: 'var(--muted)' }}>
+                  <tr style={{ borderBottom: '2px solid var(--line)', color: 'var(--ink)' }}>
                     <th style={{ padding: '8px' }}>Date</th>
                     <th style={{ padding: '8px' }}>Opp</th>
                     <th style={{ padding: '8px', textAlign: 'center' }}>PTS</th>
@@ -3870,11 +4120,11 @@ export default function App() {
                 </thead>
                 <tbody>
                   {recentGames.map((game, idx) => {
-                    const formattedDate = game.date 
+                    const formattedDate = game.date
                       ? new Date(game.date).toLocaleDateString(undefined, {
-                          month: 'numeric', 
-                          day: 'numeric'
-                        }) 
+                        month: 'numeric',
+                        day: 'numeric'
+                      })
                       : "N/A";
 
                     return (
@@ -3887,6 +4137,61 @@ export default function App() {
                       </tr>
                     );
                   })}
+                  {(() => {
+                    const avgPts = (recentGames.reduce((sum, g) => sum + (Number(g.pts) || 0), 0) / recentGames.length).toFixed(1);
+                    const avgReb = (recentGames.reduce((sum, g) => sum + (Number(g.reb) || 0), 0) / recentGames.length).toFixed(1);
+                    const avgAst = (recentGames.reduce((sum, g) => sum + (Number(g.ast) || 0), 0) / recentGames.length).toFixed(1);
+
+                    let seasonPlayer = null;
+                    const allSeasonRows = [...(seasonPlayers.ucsb?.rows || []), ...(seasonPlayers.opponent?.rows || [])];
+                    seasonPlayer = allSeasonRows.find(p => {
+                      const sn = p["Player"];
+                      if (!sn) return false;
+                      if (sn.includes(",")) {
+                        const [last, first] = sn.split(",").map(s => s.trim());
+                        return `${first} ${last}` === selectedModalPlayer;
+                      }
+                      return sn === selectedModalPlayer;
+                    });
+
+                    const seasonPPG = seasonPlayer ? parseFloat(seasonPlayer["PPG"]) || 0 : null;
+                    const seasonRPG = seasonPlayer ? parseFloat(seasonPlayer["RPG"]) || 0 : null;
+                    const seasonAPG = seasonPlayer ? parseFloat(seasonPlayer["APG"]) || 0 : null;
+
+                    const renderDiff = (avg, season) => {
+                      if (season === null) return null;
+                      const diff = avg - season;
+                      if (Math.abs(diff) < 0.1) return <span style={{ fontSize: '0.75rem', color: 'var(--muted)', marginLeft: '4px' }}>(-)</span>;
+                      const color = diff > 0 ? '#16a34a' : '#dc2626';
+                      const arrow = diff > 0 ? '↑' : '↓';
+                      return (
+                        <span style={{ fontSize: '0.75rem', color, marginLeft: '6px', fontWeight: 'bold', display: 'inline-flex', alignItems: 'center', gap: '2px' }}>
+                          {arrow}{Math.abs(diff).toFixed(1)}
+                        </span>
+                      );
+                    };
+
+                    return (
+                      <tr style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderTop: '2px solid var(--line)' }}>
+                        <td colSpan="2" style={{ padding: '8px', fontWeight: 'bold', textAlign: 'center' }}>5-Game Average:</td>
+                        <td style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>
+                          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                            {avgPts} {renderDiff(avgPts, seasonPPG)}
+                          </div>
+                        </td>
+                        <td style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>
+                          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                            {avgReb} {renderDiff(avgReb, seasonRPG)}
+                          </div>
+                        </td>
+                        <td style={{ padding: '8px', textAlign: 'center', fontWeight: 'bold' }}>
+                          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                            {avgAst} {renderDiff(avgAst, seasonAPG)}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })()}
                 </tbody>
               </table>
             ) : (

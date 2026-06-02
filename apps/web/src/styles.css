@@ -1,14 +1,14 @@
 :root {
-    --bg: #f2f3ec;
-    --panel: #fbfbf7;
-    --panel-strong: #eff2e7;
-    --line: #c6ccb6;
-    --ink: #1c2319;
-    --muted: #5e6659;
-    --accent: #116149;
-    --accent-soft: #ddf1e9;
-    --warning: #8f2e21;
-    --highlight: #ffe7a3;
+    --bg: #002240;
+    --panel: #003660;
+    --panel-strong: #001f3f;
+    --line: #1e40af;
+    --ink: #FEBC11;
+    --muted: #fcd34d;
+    --accent: #FEBC11;
+    --accent-soft: rgba(254, 188, 17, 0.15);
+    --warning: #ef4444;
+    --highlight: #FEBC11;
     --btn-font-size: 0.78rem;
     --btn-pad-y: 4px;
     --btn-pad-x: 8px;
@@ -27,9 +27,9 @@ body,
     color: var(--ink);
     background: radial-gradient(
         circle at 0% 0%,
-        #fdfff8 0%,
+        #003660 0%,
         var(--bg) 45%,
-        #e7ebdb 100%
+        #001220 100%
     );
     font-family: "Avenir Next", "Trebuchet MS", "Helvetica Neue", sans-serif;
 }
@@ -82,7 +82,7 @@ body,
     height: 36px;
     border: 1px dashed var(--line);
     border-radius: 8px;
-    background: rgba(17, 97, 73, 0.04);
+    background: rgba(254, 188, 17, 0.04);
     flex-shrink: 0;
 }
 
@@ -259,7 +259,7 @@ body,
     padding: 8px;
     border: 1px solid var(--line);
     border-radius: 10px;
-    background: #ffffff;
+    background: #003660;
     box-shadow: 0 12px 24px rgba(30, 40, 30, 0.12);
     display: grid;
     gap: 6px;
@@ -294,7 +294,7 @@ body,
 
 /* Modern Card Container for the Story */
 .player-story-card {
-    background: #ffffff;
+    background: #003660;
     border-radius: 16px;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
     padding: 20px;
@@ -304,7 +304,7 @@ body,
 
 /* Custom Tooltip Styling */
 .custom-tooltip {
-    background: rgba(255, 255, 255, 0.95);
+    background: rgba(0, 54, 96, 0.95);
     backdrop-filter: blur(4px);
     border: 1px solid var(--line);
     padding: 10px;
@@ -374,7 +374,7 @@ body,
 
 .panel-collapsed:hover {
     color: var(--accent);
-    background: rgba(17, 97, 73, 0.08);
+    background: rgba(254, 188, 17, 0.08);
 }
 
 .insights-column {
@@ -485,8 +485,8 @@ body,
         90deg,
         transparent,
         transparent 2px,
-        rgba(17, 97, 73, 0.25) 2px,
-        rgba(17, 97, 73, 0.25) 4px
+        rgba(254, 188, 17, 0.25) 2px,
+        rgba(254, 188, 17, 0.25) 4px
     );
 }
 
@@ -502,7 +502,7 @@ body,
 
 .team-node {
     border: 1px solid var(--line);
-    background: #f8faef;
+    background: #001f3f;
     border-radius: 12px;
     margin-bottom: 10px;
     padding: 10px;
@@ -546,7 +546,7 @@ body,
     z-index: 25;
     border: 1px solid var(--line);
     border-radius: 8px;
-    background: #ffffff;
+    background: #003660;
     box-shadow: 0 10px 24px rgba(30, 40, 30, 0.12);
     display: grid;
     gap: 0;
@@ -555,9 +555,9 @@ body,
 .search-option {
     text-align: left;
     border: 0;
-    border-bottom: 1px solid #e7eadf;
+    border-bottom: 1px solid #1e40af;
     border-radius: 0;
-    background: #ffffff;
+    background: #003660;
     padding: 7px 8px;
 }
 
@@ -581,7 +581,7 @@ textarea {
 button {
     border: 1px solid var(--line);
     border-radius: 8px;
-    background: #ffffff;
+    background: #003660;
     color: var(--ink);
     cursor: pointer;
     font-size: var(--btn-font-size);
@@ -593,11 +593,11 @@ button.active,
 .context-buttons button.active {
     border-color: var(--accent);
     background: var(--accent-soft);
-    color: #07392a;
+    color: var(--ink);
 }
 
 button.neutral {
-    background: #f0f2ea;
+    background: #002b4d;
 }
 
 button:disabled {
@@ -611,7 +611,8 @@ textarea {
     border: 1px solid var(--line);
     border-radius: 8px;
     padding: 5px 7px;
-    background: #fff;
+    background: #003660;
+    color: var(--ink);
 }
 
 textarea {
@@ -831,6 +832,7 @@ textarea {
 .trends-threshold-controls input[type="range"] {
     width: 100%;
     padding: 0;
+    accent-color: var(--accent);
 }
 
 .trends-threshold-controls span {
@@ -869,7 +871,7 @@ textarea {
     border: 1px solid var(--line);
     border-radius: 10px;
     padding: 6px 8px;
-    background: #fff;
+    background: #003660;
 }
 
 .pbp-advanced-summary {
@@ -914,7 +916,7 @@ textarea {
 }
 
 .pbp-inline-hint {
-    color: #3f4b2e;
+    color: #fcd34d;
     font-size: 0.78rem;
     margin-top: 6px;
 }
@@ -928,7 +930,8 @@ textarea {
     overflow: auto;
     border: 1px solid var(--line);
     border-radius: 10px;
-    background: #fff;
+    background: #ffffff;
+    color: #0f172a;
     min-height: 0;
     flex: 1;
 }
@@ -937,11 +940,12 @@ table {
     width: max-content;
     min-width: 100%;
     border-collapse: collapse;
+    color: #0f172a;
 }
 
 th,
 td {
-    border-bottom: 1px solid #e2e5d9;
+    border-bottom: 1px solid #cbd5e1;
     padding: 6px 7px;
     font-size: 0.82rem;
     white-space: nowrap;
@@ -952,15 +956,16 @@ th {
     position: sticky;
     top: 0;
     z-index: 2;
-    background: #edf2e4;
+    background: #f8fafc;
+    color: #0f172a;
 }
 
 tbody tr:hover {
-    background: #f8f9f3;
+    background: #f1f5f9;
 }
 
 tbody tr.selected {
-    background: #e6f4ed;
+    background: rgba(0, 54, 96, 0.1);
 }
 
 tbody tr.highlighted {
@@ -994,7 +999,7 @@ tbody tr.highlighted {
 
 .bubble {
     border: 1px solid var(--line);
-    background: #fff;
+    background: #003660;
     border-radius: 10px;
     padding: 10px;
 }
@@ -1025,8 +1030,8 @@ tbody tr.highlighted {
 
 .evidence-chip {
     font-size: 0.77rem;
-    background: #f1f7f4;
-    border-color: #c7e3d7;
+    background: rgba(254, 188, 17, 0.15);
+    border-color: #1e40af;
 }
 
 .placeholder {
@@ -1036,7 +1041,7 @@ tbody tr.highlighted {
 
 .table-empty {
     padding: 18px;
-    color: var(--muted);
+    color: #64748b;
 }
 
 @media (max-width: 960px) {
@@ -1061,4 +1066,22 @@ tbody tr.highlighted {
     .leaf {
         flex: 1;
     }
+}
+
+
+/* Last 5 Games modal table override */
+.last-5-table {
+    background: transparent;
+    color: var(--ink);
+}
+.last-5-table th {
+    background: transparent;
+    color: var(--ink);
+    border-bottom: 1px solid var(--line);
+}
+.last-5-table td {
+    border-bottom: 1px solid var(--line);
+}
+.last-5-table tbody tr:hover {
+    background: rgba(254, 188, 17, 0.1);
 }
